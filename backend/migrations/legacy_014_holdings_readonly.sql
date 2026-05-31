@@ -1,0 +1,55 @@
+-- holdings table refactor: [B1] 交易為唯一輸入
+-- After this refactor:
+--   • holdings table becomes read-only (system-maintained, no manual CRUD)
+--   • All write paths through transactions.py no longer touch holdings
+--   • GET /holdings/computed computes directly from transactions on every call
+--   • Portfolio summary also computes from transactions directly
+--
+-- OPTION A — Make holdings read-only (revoke write from app user):
+--
+--   REVOKE INSERT, UPDATE, DELETE ON holdings FROM postgres;
+--
+-- OPTION B — Replace holdings table with a view (cleaner):
+--
+--   DROP TABLE holdings;  -- only if you're sure no other code reads it
+--   CREATE OR REPLACE VIEW holdings AS
+--   SELECT
+--       symbol,
+--       SUM(CASE WHEN type = 'buy' THEN shares ELSE 0 END)
+--         - SUM(CASE WHEN type = 'sell' THEN shares ELSE 0 END) AS net_shares,
+--       CASE
+--         WHEN SUM(CASE WHEN type = 'buy' THEN shares ELSE 0 END) > 0
+--         THEN SUM(CASE WHEN type = 'buy' THEN shares * price ELSE 0 END)
+--              / SUM(CASE WHEN type = 'buy' THEN shares ELSE 0 END)
+--         ELSE 0
+--       END AS avg_cost,
+--       MIN(date) AS first_purchase_date
+--   FROM transactions
+--   WHERE type = 'buy'
+--   GROUP BY symbol;
+--
+-- OPTION C — Add a trigger to reject manual writes (if you want to keep the table):
+--
+--   CREATE OR REPLACE FUNCTION holdings_block_manual_write()
+--   RETURNS TRIGGER AS $$
+--   BEGIN
+--     RAISE EXCEPTION 'holdings table is system-maintained; all changes must go through transactions';
+--   END;
+--   $$ LANGUAGE plpgsql;
+--
+--   DROP TRIGGER IF EXISTS block_holdings_write ON holdings;
+--   CREATE TRIGGER block_holdings_write
+--     BEFORE INSERT OR UPDATE OR DELETE ON holdings
+--     FOR EACH ROW EXECUTE FUNCTION holdings_block_manual_write();
+--
+-- =============================================================================
+-- ROLLBACK (if needed before final deployment):
+--   The Python code before this refactor:
+--     • kept _recompute_holdings() in transactions.py
+--     • allowed POST/PUT/DELETE on holdings via implicit endpoints
+--     • wrote computed holdings back to the holdings table on every transaction mutation
+-- =============================================================================
+
+-- Verify current state (run separately):
+-- SELECT 'transactions count' AS check, COUNT(*) FROM transactions;
+-- SELECT 'holdings count'    AS check, COUNT(*) FROM holdings;
