@@ -103,8 +103,26 @@ export default function DashboardPage() {
   const [createHolding] = useCreateHoldingMutation();
   const [deleteHolding] = useDeleteHoldingMutation();
 
-  // Live chart: poll /portfolio/summary every 30s
-  const [chartData, setChartData] = useState<{date: string; value: number}[]>([]);
+  // Chart: seed from /portfolio/history, then live-poll today\'s value every 30s
+  const [chartData, setChartData] = useState<{date: string; value: number}[]>(() =>
+    (history as {date: string; value: number}[]).slice().sort((a, b) => a.date.localeCompare(b.date))
+  );
+
+  // When history loads, merge into chartData (keep live points if already populated)
+  useEffect(() => {
+    if (!history || history.length === 0) return;
+    setChartData(prev => {
+      const sorted = (history as {date: string; value: number}[]).slice().sort((a, b) => a.date.localeCompare(b.date));
+      const today = new Date().toISOString().slice(0, 10);
+      const livePoint = prev.find(d => d.date === today);
+      if (!livePoint) return sorted;
+      // Keep live point, drop any duplicate date from history
+      const withoutToday = sorted.filter(d => d.date !== today);
+      return [...withoutToday, livePoint].sort((a, b) => a.date.localeCompare(b.date));
+    });
+  }, [history]);
+
+  // Live update: poll /portfolio/summary every 30s
   useEffect(() => {
     const fetchLive = async () => {
       try {
