@@ -47,6 +47,22 @@ function formatTWD(v: number) {
   });
 }
 
+// 根據原幣值顯示（持倉列表用）
+// 顯示 2 位小數以避免四捨五入造成均價×股數 ≠成本的錯覺
+function formatByCurrency(v: number, currency = 'TWD') {
+  if (v == null || isNaN(v)) return 'N/A';
+  if (currency === 'USD') {
+    return 'US$' + Number(v).toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+  }
+  return 'NT$' + Number(v).toLocaleString('zh-TW', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
 function formatPct(v: number) {
   if (v == null || isNaN(v)) return 'N/A';
   return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
@@ -325,8 +341,10 @@ export default function DashboardPage() {
                   </thead>
                   <tbody>
                     {computedHoldings.map((h: ComputedHolding) => {
-                      const mv = h.market_value_twd ?? h.market_value ?? 0;
-                      const cost = h.total_cost_twd ?? h.total_cost ?? 0;
+                      const currency = h.currency ?? 'TWD';
+                      // 持倉列表用原幣值顯示，*_twd 只做 Summary 統一台幣時的後備
+                      const mv = h.market_value ?? h.market_value_twd ?? 0;
+                      const cost = h.total_cost ?? h.total_cost_twd ?? 0;
                       const gain = mv - cost;
                       const gainPct = cost > 0 ? (gain / cost * 100) : 0;
                       const avgPrice = h.avg_cost ?? (h.shares > 0 ? cost / h.shares : 0);
@@ -334,11 +352,11 @@ export default function DashboardPage() {
                         <tr key={h.symbol} className="border-t border-[var(--border-color)] hover:bg-[var(--bg-secondary)]/50 transition-colors">
                           <td className="px-2 sm:px-4 py-2 sm:py-3 font-mono font-bold text-sm">{h.symbol}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-mono">{Number(h.shares).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">{formatTWD(avgPrice)}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">{formatTWD(cost)}</td>
-                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">{formatTWD(mv)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">{formatByCurrency(avgPrice, currency)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">{formatByCurrency(cost, currency)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">{formatByCurrency(mv, currency)}</td>
                           <td className={`px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold ${gain >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                            {gain >= 0 ? '+' : ''}{formatTWD(Math.abs(gain))}
+                            {gain >= 0 ? '+' : ''}{formatByCurrency(Math.abs(gain), currency)}
                             <span className="text-xs opacity-70 ml-1">({gainPct >= 0 ? '+' : ''}{gainPct.toFixed(2)}%)</span>
                           </td>
                         </tr>

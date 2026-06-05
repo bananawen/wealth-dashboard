@@ -177,7 +177,8 @@ def get_portfolio_summary(current_user: dict = Depends(get_current_user)):
             day_change += mv * day_chg / 100
 
         unrealized_gain = total_value - total_cost
-        unrealized_pct = (unrealized_gain / total_cost * 100) if total_cost > 0 else 0.0
+        unrealized_gain_twd = total_value_twd - total_cost_twd
+        unrealized_pct = (unrealized_gain_twd / total_cost_twd * 100) if total_cost_twd > 0 else 0.0
 
         # Realized gains
         realized_gain = sum(float(s["total_realized"]) for s in sells_dicts)
@@ -206,12 +207,12 @@ def get_portfolio_summary(current_user: dict = Depends(get_current_user)):
         day_change_pct = (day_change / (total_value - day_change) * 100) if (total_value - day_change) > 0 else 0.0
 
         return PortfolioSummary(
-            total_value=round(total_value, 2),
+            total_value=round(total_value_twd, 2),
             total_value_twd=round(total_value_twd, 2),
-            total_cost=round(total_cost, 2),
+            total_cost=round(total_cost_twd, 2),
             total_cost_twd=round(total_cost_twd, 2),
-            unrealized_gain=round(unrealized_gain, 2),
-            unrealized_gain_twd=round(unrealized_gain * usd_rate, 2),
+            unrealized_gain=round(unrealized_gain_twd, 2),
+            unrealized_gain_twd=round(unrealized_gain_twd, 2),
             unrealized_pct=round(unrealized_pct, 2),
             realized_gain=round(realized_gain, 2),
             annualized_return=round(annualized, 2) if annualized else None,
