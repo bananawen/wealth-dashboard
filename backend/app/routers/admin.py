@@ -44,24 +44,22 @@ async def get_database_stats():
         
         # Get total database size
         cur.execute("""
-            SELECT pg_size_pretty(pg_database_size(current_database()))
+            SELECT pg_size_pretty(pg_database_size(current_database())),
+                   pg_database_size(current_database())
         """)
-        total_size_pretty = cur.fetchone()[0]
-        
-        cur.execute("""
-            SELECT pg_size_pretty(pg_database_size(current_database()))
-        """)
-        total_bytes = cur.fetchone()[0]
+        row = cur.fetchone()
+        total_size_pretty = row[0]
+        total_bytes = row[1]
         
         # Get table info
         cur.execute("""
             SELECT 
-                schemaname || '.' || tablename as table_name,
-                row_count,
-                pg_total_relation_size(schemaname || '.' || tablename) as size_bytes
+                schemaname || '.' || relname as table_name,
+                n_live_tup as row_count,
+                pg_total_relation_size(schemaname || '.' || relname) as size_bytes
             FROM pg_stat_user_tables
             WHERE schemaname = 'public'
-            ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
+            ORDER BY pg_total_relation_size(schemaname || '.' || relname) DESC
         """)
         tables_data = cur.fetchall()
         
@@ -175,6 +173,58 @@ async def get_scraper_status():
             "tw_market": "13:30 TT"
         }
     }
+
+
+@router.get("/logs", response_model=dict)
+async def get_audit_logs(log_type: str = '', limit: int = 100):
+    """Get audit log entries from the audit_log table"""
+    try:
+        conn = psycopg2.connect(settings.DATABASE_URL)
+        cur = conn.cursor()
+        
+        if log_type:
+            cur.execute("""
+                SELECT id, type, message, timestamp, details
+                FROM audit_log
+                WHERE type = %s
+                ORDER BY timestamp DESC
+                LIMIT %s
+            """, (log_type, limit))
+        else:
+            cur.execute("""
+                SELECT id, type, message, timestamp, details
+                FROM audit_log
+                ORDER BY timestamp DESC
+                LIMIT %s
+            """, (limit,))
+        
+        rows = cur.fetchall()
+        
+        # Get total count
+        cur.execute("SELECT COUNT(*) FROM audit_log")
+        total = cur.fetchone()[0]
+        
+        cur.close()
+        conn.close()
+        
+        logs = [
+            {
+                "id": row[0],
+                "type": row[1],
+                "message": row[2],
+                "timestamp": row[3].isoformat() if row[3] else None,
+                "details": row[4] if isinstance(row[4], dict) else None
+            }
+            for row in rows
+        ]
+        
+        logger.info(f"Audit logs fetched: {len(logs)} entries")
+        
+        return {"logs": logs, "total": total}
+        
+    except Exception as e:
+        logger.error(f"Failed to get audit logs: {e}")
+        return {"logs": [], "total": 0, "error": str(e)}
 
 
 @router.get("/logs/recent")

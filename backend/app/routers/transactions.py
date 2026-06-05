@@ -101,12 +101,19 @@ def create_transaction(tx: TransactionCreate, current_user: dict = Depends(get_c
 
         realized_gain = 0.0
         if tx.type.lower() == "sell":
+            # Validate: cannot sell more shares than currently held
             cur.execute(
-                "SELECT shares, avg_cost FROM holdings WHERE symbol = %s AND user_id = %s",
+                "SELECT shares FROM holdings WHERE symbol = %s AND user_id = %s",
                 (tx.symbol.upper(), user_id),
             )
             h = cur.fetchone()
-            if h and h["shares"] and float(h["shares"]) > 0:
+            current_shares = float(h["shares"]) if h and h["shares"] else 0.0
+            if current_shares < tx.shares:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"賣出股數不足：目前持有 {current_shares} 股，欲賣出 {tx.shares} 股"
+                )
+            if current_shares > 0:
                 shares = float(h["shares"])
                 avg_cost = float(h["avg_cost"])
                 realized_gain = (tx.price - avg_cost) * tx.shares

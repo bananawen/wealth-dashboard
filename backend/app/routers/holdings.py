@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
+from functools import lru_cache
 from ..models import HoldingCreate, HoldingUpdate, HoldingOut
 from ..database import get_db
 from ..routers.auth import get_current_user
@@ -61,8 +62,26 @@ def _get_price(symbol: str, avg_cost: float = 0.0) -> tuple[float, float, str]:
         except Exception:
             pass
 
+    # US / International stocks — Yahoo Finance uses symbol as-is
+    if exchange == "US":
+        try:
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="2d")
+            if len(hist) >= 2:
+                prev_close = float(hist["Close"].iloc[-2])
+                curr_close = float(hist["Close"].iloc[-1])
+                change_pct = (curr_close - prev_close) / prev_close * 100
+                return curr_close, change_pct, exchange
+            elif len(hist) == 1:
+                curr_close = float(hist["Close"].iloc[-1])
+                if curr_close > 0:
+                    return curr_close, 0.0, exchange
+        except Exception:
+            pass
+
+    # Fallback: return 0 so UI shows N/A instead of misleading avg_cost
     if avg_cost > 0:
-        return avg_cost, 0.0, exchange
+        return 0.0, 0.0, exchange
 
     return 0.0, 0.0, exchange
 
@@ -182,9 +201,25 @@ def update_holding(holding_id: int, holding: HoldingUpdate, current_user: dict =
         return result
 
 
-@router.get("/computed")
-def get_computed_holdings(current_user: dict = Depends(get_current_user)):
+@lru_cache(maxsize=8)
+def _get_currency_rate(currency: str) -> float:
+    """Get USD→TWD rate from currency_cache, default to 32.0. Cached per process."""
+    if currency == "TWD":
+        return 1.0
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT rate_to_twd FROM currency_cache WHERE currency = %s", (currency,))
+        row = cur.fetchone()
+        return float(row["rate_to_twd"]) if row else 32.0
+
+
+@router.get("/computed", response_model=list[dict])
+def get_computed_holdings(response: Response, current_user: dict = Depends(get_current_user)):
     """Fetch all active holdings with real-time market prices computed."""
+    # No cache - always return fresh data
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     user_id = current_user.get("user_id", 1)
     with get_db() as conn:
         cur = conn.cursor()
@@ -195,37 +230,51 @@ def get_computed_holdings(current_user: dict = Depends(get_current_user)):
         )
         rows = cur.fetchall()
 
-    result = []
-    for row in rows:
-        d = dict(row)
-        symbol = d["symbol"]
-        shares = float(d["shares"])
-        avg_cost = float(d["avg_cost"])
-        total_cost = float(d["total_cost"])
-        currency = d.get("currency", "TWD")
+        # Pre-fetch currency rates while connection is open
+        currency_rates = {}
+        for row in rows:
+            d = dict(row)
+            curr = d.get("currency", "TWD")
+            if curr not in currency_rates:
+                currency_rates[curr] = _get_currency_rate(curr)
 
-        price, day_chg, exchange = _get_price(symbol, avg_cost)
+        result = []
+        for row in rows:
+            d = dict(row)
+            symbol = d["symbol"]
+            shares = float(d["shares"])
+            avg_cost = float(d["avg_cost"])
+            total_cost = float(d["total_cost"])
+            currency = d.get("currency", "TWD")
 
-        if price == 0 and avg_cost > 0:
-            price = avg_cost
+            price, day_chg, exchange = _get_price(symbol, avg_cost)
 
-        market_value = price * shares
-        unrealized_gain = market_value - total_cost
-        unrealized_pct = (unrealized_gain / total_cost * 100) if total_cost > 0 else 0.0
+            if price == 0 and avg_cost > 0:
+                price = avg_cost
 
-        result.append({
-            "symbol": symbol,
-            "shares": shares,
-            "avg_cost": avg_cost,
-            "total_cost": round(total_cost, 2),
-            "market_value": round(market_value, 2),
-            "unrealized_gain": round(unrealized_gain, 2),
-            "unrealized_pct": round(unrealized_pct, 2),
-            "current_price": round(price, 2),
-            "day_change_pct": round(day_chg, 2),
-            "currency": currency,
-            "exchange": exchange,
-        })
+            market_value = price * shares
+            unrealized_gain = market_value - total_cost
+            unrealized_pct = (unrealized_gain / total_cost * 100) if total_cost > 0 else 0.0
+
+            fx_rate = currency_rates.get(currency, 32.0)
+            market_value_twd = market_value * fx_rate
+            total_cost_twd = total_cost * fx_rate
+
+            result.append({
+                "symbol": symbol,
+                "shares": shares,
+                "avg_cost": avg_cost,
+                "total_cost": round(total_cost, 2),
+                "market_value": round(market_value, 2),
+                "market_value_twd": round(market_value_twd, 2),
+                "total_cost_twd": round(total_cost_twd, 2),
+                "unrealized_gain": round(unrealized_gain, 2),
+                "unrealized_pct": round(unrealized_pct, 2),
+                "current_price": round(price, 2),
+                "day_change_pct": round(day_chg, 2),
+                "currency": currency,
+                "exchange": exchange,
+            })
 
     return result
 

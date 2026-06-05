@@ -94,11 +94,9 @@ export const apiSlice = createApi({
       query: () => '/holdings',
       providesTags: ['Holding'],
     }),
-       getComputedHoldings: builder.query<ComputedHolding[], void>({
+    getComputedHoldings: builder.query<ComputedHolding[], void>({
       query: () => '/holdings/computed',
       providesTags: ['Holding'],
-      refetchOnMountOrArgChange: true,
-      keepUnusedDataFor: 0,
     }),
     createHolding: builder.mutation<Holding, CreateHoldingRequest>({
       query: (body) => ({ url: '/holdings', method: 'POST', body }),
@@ -114,11 +112,9 @@ export const apiSlice = createApi({
     }),
 
     // ---------- Portfolio ----------
-       getPortfolioSummary: builder.query<PortfolioSummary, void>({
+    getPortfolioSummary: builder.query<PortfolioSummary, void>({
       query: () => '/portfolio/summary',
       providesTags: ['Portfolio'],
-      refetchOnMountOrArgChange: true,
-      keepUnusedDataFor: 0,
     }),
     getHistory: builder.query<HistoryPoint[], void>({
       query: () => '/portfolio/history',

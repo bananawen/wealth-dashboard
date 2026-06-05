@@ -1,0 +1,296 @@
+import { useState, useEffect } from 'react'
+import { api } from '../utils/api'
+import { TrendingUp, TrendingDown, Wallet, RefreshCw, Plus, Trash2, ArrowDownCircle, ArrowUpCircle, Sun, Moon } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
+import { useTheme } from '../context/ThemeContext'
+import AddTransactionForm from '../components/AddTransactionForm'
+
+function StatCard({ label, value, sub, positive }) {
+  return (
+    <div className="card p-4 animate-fade-in">
+      <div className="text-sm opacity-60">{label}</div>
+      <div className={`text-2xl font-bold mt-1 ${positive === undefined ? 'text-inherit' : positive ? 'text-red-500' : 'text-emerald-500'}`}>
+        {value}
+      </div>
+      {sub && <div className="text-xs opacity-50 mt-1">{sub}</div>}
+    </div>
+  )
+}
+
+function formatCurrency(v) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v)
+}
+
+function formatPct(v) {
+  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
+}
+
+export default function DashboardPage() {
+  const { theme, toggleTheme, isDark } = useTheme()
+  const [summary, setSummary] = useState(null)
+  const [holdings, setHoldings] = useState([])
+  const [transactions, setTransactions] = useState([])
+  const [accounts, setAccounts] = useState([])
+  const [history, setHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [symbol, setSymbol] = useState('')
+  const [shares, setShares] = useState('')
+  const [costBasis, setCostBasis] = useState('')
+  const [purchaseDate, setPurchaseDate] = useState('')
+  const [accountId, setAccountId] = useState('')
+  const [tab, setTab] = useState('portfolio')
+
+  const loadAll = async () => {
+    setLoading(true)
+    try {
+      const [s, h, t, a, hist] = await Promise.all([
+        api.getPortfolioSummary(),
+        api.getHoldings(),
+        api.getTransactions(),
+        api.getAccounts(),
+        api.getHistory(),
+      ])
+      setSummary(s)
+      setHoldings(h)
+      setTransactions(t)
+      setAccounts(a)
+      setHistory(hist)
+      if (a.length > 0 && !accountId) setAccountId(a[0].id)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadAll() }, [])
+
+  const handleAddHolding = async (e) => {
+    e.preventDefault()
+    try {
+      await api.createHolding({
+        account_id: Number(accountId),
+        symbol: symbol.trim().toUpperCase(),
+        shares: Number(shares),
+        cost_basis: Number(costBasis),
+        purchase_date: purchaseDate,
+      })
+      setSymbol(''); setShares(''); setCostBasis(''); setPurchaseDate('')
+      loadAll()
+    } catch (err) { alert(err.message) }
+  }
+
+  const handleDeleteHolding = async (id) => {
+    if (!confirm('刪除這筆持倉？')) return
+    try {
+      await api.deleteHolding(id)
+      loadAll()
+    } catch (err) { alert(err.message) }
+  }
+
+  if (loading && !summary) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
+        <RefreshCw className="animate-spin text-blue-500 w-8 h-8" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-300">
+      {/* Header - responsive */}
+      <header className="sticky top-0 z-50 border-b border-[var(--border-color)] bg-[var(--bg-primary)]/95 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+          <h1 className="text-lg sm:text-xl font-bold flex items-center gap-2">
+            <span className="text-2xl">📈</span>
+            <span className="hidden xs:inline">個人財富管理</span>
+            <span className="xs:hidden">財富</span>
+          </h1>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button 
+              onClick={toggleTheme}
+              className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
+              aria-label="Toggle theme"
+            >
+              {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+            <button onClick={loadAll} className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-1 text-sm">
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">刷新</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
+        {/* Summary Stats - responsive grid */}
+        {summary && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard label="總市值" value={formatCurrency(summary.total_value)} sub={`成本 ${formatCurrency(summary.total_cost)}`} />
+            <StatCard label="未實現損益" value={formatCurrency(summary.unrealized_gain)} sub={formatPct(summary.unrealized_pct)} positive={summary.unrealized_gain >= 0} />
+            <StatCard label="已實現損益" value={formatCurrency(summary.realized_gain)} positive={summary.realized_gain >= 0} />
+            <StatCard label="XIRR（年化）" value={summary.annualized_return != null ? formatPct(summary.annualized_return) : 'N/A'} positive={summary.annualized_return >= 0} />
+          </div>
+        )}
+
+        {/* Portfolio Chart - Area Chart with gradient */}
+        {history.length > 0 && (
+          <div className="card p-4 sm:p-6 animate-fade-in">
+            <h2 className="text-sm font-semibold opacity-60 mb-4">歷史淨值趨勢</h2>
+            <ResponsiveContainer width="100%" height={200} className="text-xs">
+              <AreaChart data={history}>
+                <defs>
+                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickFormatter={v => '$' + v.toLocaleString()} />
+                <Tooltip 
+                  formatter={(v) => ['$' + Number(v).toLocaleString(), '淨值']} 
+                  contentStyle={{ 
+                    backgroundColor: 'var(--card-bg)', 
+                    border: '1px solid var(--border-color)', 
+                    borderRadius: '0.75rem',
+                    color: 'var(--text-primary)'
+                  }} 
+                  labelStyle={{ color: 'var(--text-secondary)' }} 
+                />
+                <Area type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2} fill="url(#colorValue)" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Tabs - horizontal scroll on mobile */}
+        <div className="flex gap-2 border-b border-[var(--border-color)] overflow-x-auto pb-px">
+          {[
+            { key: 'portfolio', label: '持倉', icon: Wallet },
+            { key: 'transactions', label: '交易', icon: ArrowUpCircle },
+            { key: 'add', label: '新增', icon: Plus },
+          ].map(t => (
+            <button 
+              key={t.key} 
+              onClick={() => setTab(t.key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+                tab === t.key 
+                  ? 'border-blue-500 text-blue-500' 
+                  : 'border-transparent opacity-60 hover:opacity-100'
+              }`}
+            >
+              <t.icon className="w-4 h-4" />
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Holdings */}
+        {tab === 'portfolio' && (
+          <div className="card overflow-hidden animate-fade-in">
+            <div className="px-4 py-3 border-b border-[var(--border-color)] flex items-center gap-2">
+              <Wallet className="w-4 h-4 opacity-60" />
+              <span className="text-sm font-semibold">持倉列表</span>
+            </div>
+            {holdings.length === 0 ? (
+              <div className="p-8 text-center opacity-50">尚無持倉資料</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
+                    <tr>
+                      <th className="text-left px-4 py-3">代號</th>
+                      <th className="text-right px-4 py-3 hidden sm:table-cell">股數</th>
+                      <th className="text-right px-4 py-3 hidden md:table-cell">成本</th>
+                      <th className="text-right px-4 py-3 hidden lg:table-cell">均價</th>
+                      <th className="text-right px-4 py-3">價值</th>
+                      <th className="text-right px-4 py-3 hidden sm:table-cell">持有日期</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {holdings.map(h => {
+                      const avg = h.shares > 0 ? h.cost_basis / h.shares : 0
+                      const val = summary?.holdings?.find(x => x.symbol === h.symbol)?.mv || 0
+                      return (
+                        <tr key={h.id} className="border-t border-[var(--border-color)] hover:bg-[var(--bg-secondary)]/50 transition-colors">
+                          <td className="px-4 py-3 font-mono font-bold">{h.symbol}</td>
+                          <td className="px-4 py-3 text-right hidden sm:table-cell">{h.shares.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right hidden md:table-cell opacity-70">${h.cost_basis.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right hidden lg:table-cell opacity-70">${avg.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-semibold">—</td>
+                          <td className="px-4 py-3 text-right hidden sm:table-cell opacity-60 text-xs">{h.purchase_date}</td>
+                          <td className="px-4 py-3 text-right">
+                            <button onClick={() => handleDeleteHolding(h.id)} className="text-red-500 hover:text-red-400 p-1 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Transactions */}
+        {tab === 'transactions' && (
+          <div className="card overflow-hidden animate-fade-in">
+            <div className="px-4 py-3 border-b border-[var(--border-color)] flex items-center gap-2">
+              <span className="text-sm font-semibold">交易紀錄</span>
+            </div>
+            {transactions.length === 0 ? (
+              <div className="p-8 text-center opacity-50">尚無交易紀錄</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
+                    <tr>
+                      <th className="text-left px-4 py-2">日期</th>
+                      <th className="text-left px-4 py-2">類型</th>
+                      <th className="text-left px-4 py-2">代號</th>
+                      <th className="text-right px-4 py-2 hidden sm:table-cell">股數</th>
+                      <th className="text-right px-4 py-2 hidden md:table-cell">價格</th>
+                      <th className="text-right px-4 py-2">金額</th>
+                      <th className="text-right px-4 py-2 hidden lg:table-cell">已實現</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transactions.map(tx => (
+                      <tr key={tx.id} className="border-t border-[var(--border-color)] hover:bg-[var(--bg-secondary)]/50 transition-colors">
+                        <td className="px-4 py-3 text-xs">{tx.date}</td>
+                        <td className="px-4 py-3">
+                          {tx.type === 'buy'
+                            ? <span className="flex items-center gap-1 text-red-500"><ArrowDownCircle className="w-3 h-3" />買入</span>
+                            : <span className="flex items-center gap-1 text-emerald-500"><ArrowUpCircle className="w-3 h-3" />賣出</span>}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold">{tx.symbol}</td>
+                        <td className="px-4 py-3 text-right hidden sm:table-cell">{tx.shares.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right hidden md:table-cell opacity-70">${tx.price.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right font-semibold">{formatCurrency(tx.shares * tx.price)}</td>
+                        <td className={`px-4 py-3 text-right hidden lg:table-cell ${tx.realized_gain >= 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                          {tx.realized_gain >= 0 ? '+' : ''}{formatCurrency(tx.realized_gain)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Add Transaction Form - with autocomplete and calendar */}
+        {tab === 'add' && (
+          <AddTransactionForm 
+            onSuccess={loadAll}
+            onCancel={() => setTab('portfolio')}
+          />
+        )}
+      </main>
+    </div>
+  )
+}
