@@ -251,15 +251,15 @@ export default function DashboardPage() {
         {/* Summary Stats */}
         {summary && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-            <StatCard label="總市值" value={formatTWD(summary.total_value)} sub={`成本 ${formatTWD(summary.total_cost)}`} />
-            <StatCard label="未實現損益" value={formatTWD(summary.unrealized_gain)} sub={formatPct(summary.unrealized_pct)} positive={summary.unrealized_gain >= 0} />
+            <StatCard label="總市值" value={formatTWD(summary.total_value_twd)} sub={`成本 ${formatTWD(summary.total_cost_twd)}`} />
+            <StatCard label="未實現損益" value={formatTWD(summary.unrealized_gain_twd)} sub={formatPct(summary.unrealized_pct)} positive={summary.unrealized_gain_twd >= 0} />
             <StatCard label="已實現損益" value={formatTWD(summary.realized_gain)} positive={summary.realized_gain >= 0} />
             <StatCard label="XIRR" value={summary.annualized_return != null ? formatPct(summary.annualized_return) : 'N/A'} positive={summary.annualized_return != null && summary.annualized_return >= 0} />
           </div>
         )}
 
         {/* Portfolio Chart — live from /portfolio/summary every 30s */}
-        {(chartData.length > 0 || (summary && summary.total_value > 0)) ? (
+        {(chartData.length > 0 || (summary && summary.total_value_twd > 0)) ? (
           <div className="card p-3 sm:p-6 animate-fade-in">
             <h2 className="text-sm font-semibold opacity-60 mb-4">歷史淨值趨勢</h2>
             {chartData.length > 0 ? (
