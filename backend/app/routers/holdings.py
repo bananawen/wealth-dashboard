@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Response
 from functools import lru_cache
+import time as _time
 from ..models import HoldingCreate, HoldingUpdate, HoldingOut
 from ..database import get_db
 from ..routers.auth import get_current_user
@@ -21,8 +22,20 @@ def _get_exchange(symbol: str) -> str:
     return "US"
 
 
-def _get_price(symbol: str, avg_cost: float = 0.0) -> tuple[float, float, str]:
+# Module-level price cache: symbol -> (price, day_chg, exchange, timestamp)
+_price_cache: dict = {}
+_PRICE_CACHE_TTL = 60  # seconds
+
+
+@lru_cache(maxsize=256)
+def _get_price_cached(symbol: str, avg_cost: float = 0.0) -> tuple[float, float, str]:
+    """Cached wrapper — same logic as _get_price but result is memoized per symbol+avg_cost."""
+    return _get_price_impl(symbol, avg_cost)
+
+
+def _get_price_impl(symbol: str, avg_cost: float = 0.0) -> tuple[float, float, str]:
     """
+    Core price-fetching logic (no caching). Used by _get_price_cached.
     Get price, day_change%, exchange for a symbol.
     上市用 .TW，上櫃用 .TWO.
     Falls back to avg_cost if Yahoo Finance returns 0.
@@ -247,7 +260,7 @@ def get_computed_holdings(response: Response, current_user: dict = Depends(get_c
             total_cost = float(d["total_cost"])
             currency = d.get("currency", "TWD")
 
-            price, day_chg, exchange = _get_price(symbol, avg_cost)
+            price, day_chg, exchange = _get_price_cached(symbol, avg_cost)
 
             if price == 0 and avg_cost > 0:
                 price = avg_cost

@@ -1,76 +1,12 @@
-import yfinance as yf
 from datetime import date, datetime
 from fastapi import APIRouter, Depends
 from ..models import PortfolioSummary, SnapshotCreate
 from ..database import get_db
 from ..routers.auth import get_current_user
+from ..routers.holdings import _get_price_cached
 from scipy.optimize import brentq
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
-
-
-def get_price_and_day_change(symbol: str) -> tuple[float, float]:
-    """Fetch current price and day % change for a symbol."""
-    try:
-        ticker = yf.Ticker(symbol)
-        hist = ticker.history(period="2d")
-        if len(hist) >= 2:
-            prev_close = float(hist["Close"].iloc[-2])
-            curr_close = float(hist["Close"].iloc[-1])
-            change_pct = (curr_close - prev_close) / prev_close * 100
-            return curr_close, change_pct
-        elif len(hist) == 1:
-            curr_close = float(hist["Close"].iloc[-1])
-            return curr_close, 0.0
-    except Exception:
-        pass
-    return 0.0, 0.0
-
-
-def get_twse_price(symbol: str) -> tuple[float, float]:
-    """Fetch Taiwan stock price from Yahoo Finance."""
-    try:
-        ticker = yf.Ticker(f"{symbol}.TW")
-        hist = ticker.history(period="2d")
-        if len(hist) >= 2:
-            prev_close = float(hist["Close"].iloc[-2])
-            curr_close = float(hist["Close"].iloc[-1])
-            change_pct = (curr_close - prev_close) / prev_close * 100
-            return curr_close, change_pct
-        elif len(hist) == 1:
-            return float(hist["Close"].iloc[-1]), 0.0
-    except Exception:
-        pass
-    return 0.0, 0.0
-
-
-def get_otc_price(symbol: str) -> tuple[float, float]:
-    """Fetch Taiwan OTC stock price from Yahoo Finance."""
-    try:
-        ticker = yf.Ticker(f"{symbol}.TWO")
-        hist = ticker.history(period="2d")
-        if len(hist) >= 2:
-            prev_close = float(hist["Close"].iloc[-2])
-            curr_close = float(hist["Close"].iloc[-1])
-            change_pct = (curr_close - prev_close) / prev_close * 100
-            return curr_close, change_pct
-        elif len(hist) == 1:
-            curr_close = float(hist["Close"].iloc[-1])
-            if curr_close > 0:
-                return curr_close, 0.0
-    except Exception:
-        pass
-    return 0.0, 0.0
-
-
-def is_taiwan_stock(symbol: str) -> bool:
-    """Determine if symbol is a Taiwan stock (numeric code)."""
-    return symbol.isdigit()
-
-
-def is_otc_stock(symbol: str) -> bool:
-    """Known OTC stocks that need .TWO suffix."""
-    return symbol.upper() in ["00887"]
 
 
 def xirr(cash_flows: list, dates: list) -> float:
@@ -87,24 +23,6 @@ def xirr(cash_flows: list, dates: list) -> float:
         return result
     except Exception:
         return 0.0
-
-
-def _get_price(symbol: str, avg_cost: float = 0.0) -> tuple[float, float]:
-    """Get price and day_change% for a symbol."""
-    if is_otc_stock(symbol):
-        price, day_chg = get_otc_price(symbol)
-        if price == 0 and avg_cost > 0:
-            return avg_cost, 0.0
-        return price, day_chg
-    if is_taiwan_stock(symbol):
-        price, day_chg = get_twse_price(symbol)
-        if price == 0 and avg_cost > 0:
-            return avg_cost, 0.0
-        return price, day_chg
-    price, day_chg = get_price_and_day_change(symbol)
-    if price == 0 and avg_cost > 0:
-        return avg_cost, 0.0
-    return price, day_chg
 
 
 def _get_currency_rate(currency_cache: dict, currency: str) -> float:
@@ -164,7 +82,7 @@ def get_portfolio_summary(current_user: dict = Depends(get_current_user)):
             currency = h.get("currency", "TWD")
             fx_rate = _get_currency_rate(currency_cache, currency)
 
-            price, day_chg = _get_price(symbol, cost_basis)
+            price, day_chg, _ = _get_price_cached(symbol, cost_basis)
             mv = price * shares
             mv_twd = mv * fx_rate
             tc = float(h["total_cost"])
