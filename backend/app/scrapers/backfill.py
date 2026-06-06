@@ -1,15 +1,22 @@
 """
-Backfill historical stock data from 2020 to present
-Run this script to populate the database with historical stock data
+Backfill historical stock data from 2020 to present.
+
+Can be run standalone:
+    python -m app.scrapers.backfill
+
+Or called as functions by the scheduler.
 """
 import logging
-from datetime import datetime, date, timedelta
-from typing import List
+import time
+from datetime import date, datetime, timedelta
+from typing import List, Optional
 
 from app.logging_config import logger
-from app.scrapers import TaiwanStockScraper, USStockScraper
+from app.database import get_db
+from app.scrapers.price_collector import _fetch_and_upsert, _alert_no_data
 
-# Common US ETFs and stocks to backfill
+# ─── constants ────────────────────────────────────────────────────────────────
+
 US_SYMBOLS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B", "JPM", "V",
     "UNH", "HD", "MA", "PG", "XOM", "CVX", "LLY", "ABBV", "MRK", "AVGO",
@@ -20,7 +27,6 @@ US_SYMBOLS = [
     "TLT", "IEF", "LQD", "HYG", "EMB", "MUB", "TIPS", "REET", "UUP",
 ]
 
-# Taiwan stock indices
 TW_SYMBOLS = [
     "0050", "0056", "0051", "0052", "0053", "0054", "0055", "0057", "0058", "0059",
     "006208", "00690", "00692", "00701", "00713", "00720", "00730", "00733", "00735", "00736",
@@ -30,79 +36,107 @@ TW_SYMBOLS = [
 ]
 
 
-def backfill_us_stocks(scraper: USStockScraper, symbols: List[str] = None, start_year: int = 2020):
-    """Backfill US stock historical data"""
-    symbols = symbols or US_SYMBOLS
-    end_date = date.today().strftime("%Y-%m-%d")
-    
-    logger.info(f"Starting US stock backfill: {len(symbols)} symbols from {start_year}")
-    
-    for i, symbol in enumerate(symbols):
-        start_date = f"{start_year}-01-01"
-        try:
-            logger.info(f"[{i+1}/{len(symbols)}] Fetching {symbol}...")
-            records = scraper.get_historical_data(symbol, start_date, end_date)
-            
-            if records:
-                # In production, insert into database here
-                logger.info(f"  → Got {len(records)} records")
-            else:
-                logger.warning(f"  → No data for {symbol}")
-                
-        except Exception as e:
-            logger.error(f"  → Failed {symbol}: {e}")
-        
-        # Rate limiting - be nice to the API
-        import time
-        time.sleep(0.5)
-    
-    logger.info("US stock backfill completed")
+# ─── callable functions ───────────────────────────────────────────────────────
+
+def backfill_symbol(
+    symbol: str,
+    region: str,
+    start_date: date,
+    end_date: date,
+) -> int:
+    """
+    Backfill a single symbol for the given date range.
+    Returns the number of records inserted/updated.
+    """
+    count, err = _fetch_and_upsert(symbol, region, start_date, end_date)
+    if err:
+        logger.error(f"[backfill_symbol] {symbol} ({region}) error: {err}")
+        _alert_no_data(symbol, region, reason=f"backfill: {err}")
+    return count
 
 
-def backfill_taiwan_stocks(scraper: TaiwanStockScraper, symbols: List[str] = None, start_year: int = 2020):
-    """Backfill Taiwan stock historical data"""
-    symbols = symbols or TW_SYMBOLS
-    current_year = datetime.now().year
-    current_month = datetime.now().month
-    
-    logger.info(f"Starting Taiwan stock backfill: {len(symbols)} symbols from {start_year}")
-    
-    for i, symbol in enumerate(symbols):
+def backfill_all_tracked_symbols(
+    symbols: Optional[List[str]] = None,
+    region: str = "TW",
+    start_year: int = 2020,
+    limit: Optional[int] = None,
+) -> dict:
+    """
+    Backfill a list of symbols (or the default TW/US lists).
+    Returns a summary dict with success/failure counts.
+
+    Args:
+        symbols: list of symbols to backfill, or None to use defaults
+        region: 'TW' or 'US'
+        start_year: start year for backfill
+        limit: max number of symbols to process (for testing)
+    """
+    today = date.today()
+    syms = symbols or (TW_SYMBOLS if region == "TW" else US_SYMBOLS)
+    if limit:
+        syms = syms[:limit]
+
+    results = {"success": 0, "failed": 0, "errors": []}
+
+    for i, sym in enumerate(syms):
+        start = date(start_year, 1, 1)
         try:
-            logger.info(f"[{i+1}/{len(symbols)}] Fetching {symbol}...")
-            
-            for year in range(start_year, current_year + 1):
-                for month in range(1, 13):
-                    if year == current_year and month > current_month:
-                        break
-                    
-                    records = scraper.get_historical_data(symbol, year, month)
-                    if records:
-                        logger.info(f"  → {year}/{month}: {len(records)} records")
-                    
-                    # Rate limiting
-                    import time
+            if region == "TW":
+                # Taiwan: batch by year
+                for year in range(start_year, today.year + 1):
+                    y_end = min(date(year, 12, 31), today)
+                    count, err = _fetch_and_upsert(sym, region, date(year, 1, 1), y_end)
+                    if err:
+                        logger.warning(f"[{i+1}/{len(syms)}] {sym} year={year} error: {err}")
                     time.sleep(0.3)
-                    
-        except Exception as e:
-            logger.error(f"  → Failed {symbol}: {e}")
-    
-    logger.info("Taiwan stock backfill completed")
+                results["success"] += 1
+            else:
+                # US: single range split into 30-day batches
+                current = start
+                while current <= today:
+                    batch_end = min(current + timedelta(days=29), today)
+                    count, err = _fetch_and_upsert(sym, region, current, batch_end)
+                    if err:
+                        logger.warning(f"[{i+1}/{len(syms)}] {sym} {current}→{batch_end} error: {err}")
+                    current = batch_end + timedelta(days=1)
+                    time.sleep(0.3)
+                results["success"] += 1
 
+        except Exception as e:
+            logger.error(f"[{i+1}/{len(syms)}] {sym} failed: {e}")
+            results["failed"] += 1
+            results["errors"].append(f"{sym}: {e}")
+
+    logger.info(
+        f"[backfill_all_tracked] region={region} done: "
+        f"{results['success']} success, {results['failed']} failed"
+    )
+    return results
+
+
+# ─── standalone CLI ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Backfill historical stock prices")
+    parser.add_argument("--region", choices=["TW", "US"], default="TW",
+                        help="Market region")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Limit number of symbols (for testing)")
+    parser.add_argument("--start-year", type=int, default=2020)
+    args = parser.parse_args()
+
     logger.info("=" * 60)
-    logger.info("Starting historical data backfill (2020-present)")
+    logger.info(f"Starting backfill: region={args.region}, limit={args.limit}, start={args.start_year}")
     logger.info("=" * 60)
-    
-    # Backfill US stocks
-    us_scraper = USStockScraper()
-    backfill_us_stocks(us_scraper, US_SYMBOLS[:20])  # Start with major stocks
-    
-    # Backfill Taiwan stocks
-    tw_scraper = TaiwanStockScraper()
-    backfill_taiwan_stocks(tw_scraper, TW_SYMBOLS[:10])  # Start with major ETFs
-    
+
+    result = backfill_all_tracked_symbols(
+        region=args.region,
+        limit=args.limit,
+        start_year=args.start_year,
+    )
+
     logger.info("=" * 60)
-    logger.info("Backfill completed!")
+    logger.info(f"Backfill complete: {result}")
     logger.info("=" * 60)

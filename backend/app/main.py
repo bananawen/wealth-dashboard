@@ -3,9 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import auth, holdings, transactions, portfolio, accounts, admin
 from .middleware import LoggingMiddleware
 from .logging_config import logger
+from .scrapers.price_scheduler import PriceCollectorService
 
 # Initialize logging on startup
 logger.info("Wealth API starting up...")
+
+collector_service = PriceCollectorService()
 
 app = FastAPI(title="Wealth API", version="1.0.0")
 
@@ -28,6 +31,16 @@ app.include_router(portfolio.router)
 app.include_router(admin.router)
 
 logger.info("All routers registered successfully")
+
+
+@app.on_event("startup")
+def startup_event():
+    collector_service.start()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    collector_service.stop()
 
 
 @app.get("/health")

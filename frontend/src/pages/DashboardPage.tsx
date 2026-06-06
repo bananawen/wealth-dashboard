@@ -152,7 +152,7 @@ export default function DashboardPage() {
         const today = new Date().toISOString().slice(0, 10);
         setChartData(prev => {
           const withoutToday = prev.filter(d => d.date !== today);
-          return [...withoutToday, { date: today, value: data.total_value }];
+          return [...withoutToday, { date: today, value: data.total_value_twd }];
         });
       } catch {}
     };
