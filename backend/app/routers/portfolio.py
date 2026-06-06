@@ -47,7 +47,7 @@ def get_twse_price(symbol: str) -> tuple[float, float]:
 def get_otc_price(symbol: str) -> tuple[float, float]:
     """Fetch Taiwan OTC stock price from Yahoo Finance."""
     try:
-        ticker = yf.Ticker(f"{symbol}.OB")
+        ticker = yf.Ticker(f"{symbol}.TWO")
         hist = ticker.history(period="2d")
         if len(hist) >= 2:
             prev_close = float(hist["Close"].iloc[-2])
@@ -69,7 +69,7 @@ def is_taiwan_stock(symbol: str) -> bool:
 
 
 def is_otc_stock(symbol: str) -> bool:
-    """Known OTC stocks that need .OB suffix."""
+    """Known OTC stocks that need .TWO suffix."""
     return symbol.upper() in ["00887"]
 
 

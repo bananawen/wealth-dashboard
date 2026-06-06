@@ -8,7 +8,7 @@ import yfinance as yf
 
 router = APIRouter(prefix="/holdings", tags=["holdings"])
 
-# Known OTC stocks (上櫃) that need .OB suffix
+# Known OTC stocks (上櫃) that need .TWO suffix
 OTC_STOCKS = {"00887"}
 
 
@@ -24,7 +24,7 @@ def _get_exchange(symbol: str) -> str:
 def _get_price(symbol: str, avg_cost: float = 0.0) -> tuple[float, float, str]:
     """
     Get price, day_change%, exchange for a symbol.
-    上市用 .TW，上櫃用 .OB.
+    上市用 .TW，上櫃用 .TWO.
     Falls back to avg_cost if Yahoo Finance returns 0.
     Returns (price, day_change_pct, exchange).
     """
@@ -48,7 +48,7 @@ def _get_price(symbol: str, avg_cost: float = 0.0) -> tuple[float, float, str]:
 
     if exchange == "OTC":
         try:
-            ticker = yf.Ticker(f"{symbol}.OB")
+            ticker = yf.Ticker(f"{symbol}.TWO")
             hist = ticker.history(period="2d")
             if len(hist) >= 2:
                 prev_close = float(hist["Close"].iloc[-2])
