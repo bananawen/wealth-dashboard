@@ -228,11 +228,11 @@ def get_history(current_user: dict = Depends(get_current_user)):
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT transaction_date, total_value FROM portfolio_snapshots WHERE user_id = %s ORDER BY date",
+            "SELECT date, total_value FROM portfolio_snapshots WHERE user_id = %s ORDER BY date",
             (user_id,)
         )
         rows = cur.fetchall()
-        return [{"date": str(dict(r)["transaction_date"]), "value": float(dict(r)["total_value"])} for r in rows]
+        return [{"date": str(dict(r)["date"]), "value": float(dict(r)["total_value"])} for r in rows]
 
 
 @router.post("/snapshot")
