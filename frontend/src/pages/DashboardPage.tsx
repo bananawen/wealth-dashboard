@@ -273,9 +273,9 @@ export default function DashboardPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
-                  <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickFormatter={v => '$' + v.toLocaleString()} />
+                  <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickFormatter={v => `$${(v / 1000000).toFixed(1)}M`} />
                   <Tooltip
-                    formatter={(v: number) => ['$' + Number(v).toLocaleString(), '淨值']}
+                    formatter={(v: number) => [`$${(Number(v) / 1000000).toFixed(2)}M`, '淨值']}
                     contentStyle={{
                       backgroundColor: 'var(--card-bg)',
                       border: '1px solid var(--border-color)',
