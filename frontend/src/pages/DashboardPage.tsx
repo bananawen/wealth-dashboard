@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  TrendingUp, TrendingDown, Wallet, RefreshCw, Plus, Trash2, ArrowDownCircle, ArrowUpCircle, Sun, Moon, Database, Server, Clock
+  TrendingUp, TrendingDown, Wallet, RefreshCw, Plus, Trash2, ArrowDownCircle, ArrowUpCircle, Sun, Moon, Database, Server, Clock, Settings
 } from 'lucide-react';
 import {
   AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer
@@ -91,7 +91,7 @@ function StatCard({ label, value, sub, positive }: StatCardProps) {
   return (
     <div className="card p-3 sm:p-4 animate-fade-in min-w-0">
       <div className="text-xs sm:text-sm opacity-60 truncate">{label}</div>
-      <div className={`text-lg sm:text-2xl font-bold mt-1 ${positive === undefined ? 'text-inherit' : positive ? 'text-[var(--success)]' : 'text-[var(--error)]'} truncate`}>
+      <div className={`text-lg sm:text-2xl font-bold mt-1 ${positive === undefined ? 'text-inherit' : positive ? 'text-[var(--loss)]' : 'text-[var(--profit)]'} truncate`}>
         {value}
       </div>
       {sub && <div className="text-xs opacity-50 mt-1 truncate">{sub}</div>}
@@ -235,6 +235,13 @@ export default function DashboardPage() {
               <Database className="w-5 h-5" />
             </button>
             <button
+              onClick={() => { window.location.href = '/change-password'; }}
+              className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
+              title="修改密碼"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+            <button
               onClick={toggleTheme}
               className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
               aria-label="切換主題"
@@ -307,7 +314,7 @@ export default function DashboardPage() {
               onClick={() => setTab(t.key)}
               className={`px-3 sm:px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1 sm:gap-2 ${
                 tab === t.key
-                  ? 'border-blue-500 text-blue-500'
+                  ? 'border-[var(--accent)] text-[var(--accent)]'
                   : 'border-transparent opacity-60 hover:opacity-100'
               }`}
             >
@@ -355,7 +362,7 @@ export default function DashboardPage() {
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">{formatByCurrency(avgPrice, currency)}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">{formatByCurrency(cost, currency)}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">{formatByCurrency(mv, currency)}</td>
-                          <td className={`px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold ${gain >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                          <td className={`px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold ${gain >= 0 ? 'text-[var(--loss)]' : 'text-[var(--profit)]'}`}>
                             {gain >= 0 ? '+' : ''}{formatByCurrency(Math.abs(gain), currency)}
                             <span className="text-xs opacity-70 ml-1">({gainPct >= 0 ? '+' : ''}{gainPct.toFixed(2)}%)</span>
                           </td>
