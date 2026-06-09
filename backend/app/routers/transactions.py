@@ -15,19 +15,36 @@ def _recompute_holdings(conn, symbol: str, user_id: int):
     and for cases where trigger might not fire (e.g., SELL).
     """
     cur = conn.cursor()
+    # Get USD rate for total_cost_twd calculation
+    cur.execute("SELECT currency, rate_to_twd FROM currency_cache")
+    fx_rates = {row["currency"]: float(row["rate_to_twd"]) for row in cur.fetchall()}
+    usd_rate = fx_rates.get("USD", 32.0)
+
     cur.execute(
         """SELECT
                COALESCE(SUM(CASE WHEN type='BUY' THEN quantity ELSE 0 END), 0) AS total_bought,
                COALESCE(SUM(CASE WHEN type='BUY' THEN quantity * price ELSE 0 END), 0) AS total_cost,
-               COALESCE(SUM(CASE WHEN type='SELL' THEN quantity ELSE 0 END), 0) AS total_sold
+               COALESCE(SUM(CASE WHEN type='SELL' THEN quantity ELSE 0 END), 0) AS total_sold,
+               currency
            FROM transactions
-           WHERE symbol = %s AND user_id = %s""",
+           WHERE symbol = %s AND user_id = %s
+           GROUP BY currency""",
         (symbol.upper(), user_id),
     )
-    row = cur.fetchone()
-    total_bought = float(row["total_bought"])
-    total_cost = float(row["total_cost"])
-    total_sold = float(row["total_sold"])
+    rows = cur.fetchall()
+    if not rows:
+        cur.execute(
+            "DELETE FROM holdings WHERE symbol = %s AND user_id = %s",
+            (symbol.upper(), user_id),
+        )
+        return
+
+    # Aggregate across currencies
+    total_bought = sum(float(r["total_bought"]) for r in rows)
+    total_cost = sum(float(r["total_cost"]) for r in rows)
+    total_sold = sum(float(r["total_sold"]) for r in rows)
+    # Use currency of first BUY row (all BUY rows for same symbol should have same currency)
+    currency = next((r["currency"] for r in rows if r["total_bought"] > 0), 'TWD')
     net_shares = total_bought - total_sold
 
     if net_shares <= 0:
@@ -38,6 +55,8 @@ def _recompute_holdings(conn, symbol: str, user_id: int):
     else:
         avg_cost = total_cost / total_bought if total_bought > 0 else 0.0
         total_cost_calc = avg_cost * net_shares
+        fx_rate = 1.0 if currency == 'TWD' else usd_rate
+        total_cost_twd = total_cost_calc * fx_rate
         cur.execute(
             "SELECT account_id FROM holdings WHERE symbol = %s AND user_id = %s LIMIT 1",
             (symbol.upper(), user_id),
@@ -46,16 +65,16 @@ def _recompute_holdings(conn, symbol: str, user_id: int):
         account_id = existing["account_id"] if existing else 1
 
         cur.execute(
-            """INSERT INTO holdings (account_id, symbol, shares, avg_cost, total_cost, currency, user_id)
-               VALUES (%s, %s, %s, %s, %s,
-                       (SELECT currency FROM accounts WHERE id = %s LIMIT 1),
-                       %s)
+            """INSERT INTO holdings (account_id, symbol, shares, avg_cost, total_cost, currency, total_cost_twd, user_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT (account_id, symbol) DO UPDATE SET
                    shares = EXCLUDED.shares,
                    avg_cost = EXCLUDED.avg_cost,
                    total_cost = EXCLUDED.total_cost,
+                   currency = EXCLUDED.currency,
+                   total_cost_twd = EXCLUDED.total_cost_twd,
                    user_id = COALESCE(holdings.user_id, EXCLUDED.user_id)""",
-            (account_id, symbol.upper(), net_shares, avg_cost, total_cost_calc, account_id, user_id),
+            (account_id, symbol.upper(), net_shares, avg_cost, total_cost_calc, currency, total_cost_twd, user_id),
         )
 
 
@@ -119,11 +138,18 @@ def create_transaction(tx: TransactionCreate, current_user: dict = Depends(get_c
                 realized_gain = (tx.price - avg_cost) * tx.shares
 
         cur.execute(
-            """INSERT INTO transactions (account_id, symbol, type, quantity, price, transaction_date, realized_gain, user_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            "SELECT currency FROM accounts WHERE id = %s LIMIT 1",
+            (tx.account_id,),
+        )
+        acct = cur.fetchone()
+        currency = acct["currency"] if acct else "TWD"
+
+        cur.execute(
+            """INSERT INTO transactions (account_id, symbol, type, quantity, price, transaction_date, realized_gain, user_id, currency)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id, account_id, symbol, LOWER(type::text) AS type,
                          quantity AS shares, price, transaction_date AS date, realized_gain""",
-            (tx.account_id, tx.symbol.upper(), tx.type.upper(), tx.shares, tx.price, tx.date, realized_gain, user_id),
+            (tx.account_id, tx.symbol.upper(), tx.type.upper(), tx.shares, tx.price, tx.date, realized_gain, user_id, currency),
         )
         row = cur.fetchone()
 

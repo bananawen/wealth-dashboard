@@ -101,25 +101,28 @@ def get_portfolio_summary(current_user: dict = Depends(get_current_user)):
         # Realized gains
         realized_gain = sum(float(s["total_realized"]) for s in sells_dicts)
 
-        # XIRR calculation — use actual transaction dates filtered by user
+        # XIRR calculation — all cash flows in TWD
         cur.execute(
-            "SELECT transaction_date, "
+            "SELECT transaction_date, currency, "
             "  SUM(CASE WHEN type = 'BUY' THEN -quantity * price "
             "          WHEN type = 'SELL' THEN quantity * price ELSE 0 END) AS cf "
             "FROM transactions WHERE user_id = %s "
-            "GROUP BY transaction_date ORDER BY transaction_date",
+            "GROUP BY transaction_date, currency ORDER BY transaction_date",
             (user_id,)
         )
         tx_rows = cur.fetchall()
         if tx_rows:
             all_dates = [date.fromisoformat(str(dict(r)["transaction_date"])[:10]) for r in tx_rows]
-            all_cfs = [float(dict(r)["cf"]) for r in tx_rows]
-            # Add current portfolio value as final cash flow
+            all_cfs = []
+            for r in tx_rows:
+                cf_twd = float(dict(r)["cf"]) * _get_currency_rate(currency_cache, dict(r)["currency"])
+                all_cfs.append(cf_twd)
+            # Add current portfolio value as final cash flow (already in TWD)
             all_dates.append(date.today())
-            all_cfs.append(total_value)
+            all_cfs.append(total_value_twd)
         else:
             all_dates = [date.today()]
-            all_cfs = [total_value]
+            all_cfs = [total_value_twd]
         annualized = xirr(all_cfs, all_dates) * 100 if len(all_cfs) >= 2 else None
 
         day_change_pct = (day_change / (total_value - day_change) * 100) if (total_value - day_change) > 0 else 0.0
