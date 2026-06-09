@@ -19,6 +19,7 @@ class Token(BaseModel):
     token_type: str
 
 
+# DEPRECATED: accounts concept removed — kept for backwards compat only
 class AccountCreate(BaseModel):
     name: str
     type: str  # 'brokerage', 'bank', 'crypto'
@@ -33,7 +34,6 @@ class AccountOut(BaseModel):
 
 
 class HoldingCreate(BaseModel):
-    account_id: int
     symbol: str
     shares: float
     avg_cost: float
@@ -50,7 +50,6 @@ class HoldingUpdate(BaseModel):
 
 class HoldingOut(BaseModel):
     id: int
-    account_id: int
     symbol: str
     shares: float
     avg_cost: float
@@ -59,7 +58,6 @@ class HoldingOut(BaseModel):
 
 
 class TransactionCreate(BaseModel):
-    account_id: int
     symbol: str
     type: str  # 'buy' or 'sell'
     shares: float
@@ -69,7 +67,6 @@ class TransactionCreate(BaseModel):
 
 class TransactionOut(BaseModel):
     id: int
-    account_id: int
     symbol: str
     type: str
     shares: float

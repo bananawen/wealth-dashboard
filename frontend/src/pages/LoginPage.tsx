@@ -29,7 +29,13 @@ export default function LoginPage() {
         navigate('/');
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Request failed');
+      const message =
+        typeof err === 'object' && err !== null && 'data' in err
+          ? (err as { data: { detail?: string } }).data?.detail ?? String((err as { status?: number }).status ?? '')
+          : err instanceof Error
+          ? err.message
+          : 'Request failed';
+      setError(message || 'Request failed');
     } finally {
       setLoading(false);
     }
@@ -39,7 +45,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-4">
       <div className="bg-[var(--card-bg)] border border-[var(--border-color)] p-8 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in-up">
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-500/20 mb-3">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[var(--accent)]/20 mb-3">
             <span className="text-2xl">📈</span>
           </div>
           <h1 className="text-2xl font-semibold text-[var(--text-primary)]">個人財富管理</h1>
@@ -53,7 +59,7 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="w-full rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
               style={{
                 backgroundColor: 'var(--bg-secondary)',
                 borderColor: 'var(--border-color)',
@@ -69,7 +75,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="w-full rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
               style={{
                 backgroundColor: 'var(--bg-secondary)',
                 borderColor: 'var(--border-color)',

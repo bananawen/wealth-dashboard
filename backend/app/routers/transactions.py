@@ -11,8 +11,6 @@ def _recompute_holdings(conn, symbol: str, user_id: int):
     """
     根據 transactions 表重新計算某檔股票的持有股數與平均成本，
     結果寫回 holdings 表（upsert）。
-    Trigger also does this, but this is used for consistency checks
-    and for cases where trigger might not fire (e.g., SELL).
     """
     cur = conn.cursor()
     # Get USD rate for total_cost_twd calculation
@@ -58,33 +56,25 @@ def _recompute_holdings(conn, symbol: str, user_id: int):
         fx_rate = 1.0 if currency == 'TWD' else usd_rate
         total_cost_twd = total_cost_calc * fx_rate
         cur.execute(
-            "SELECT account_id FROM holdings WHERE symbol = %s AND user_id = %s LIMIT 1",
-            (symbol.upper(), user_id),
-        )
-        existing = cur.fetchone()
-        account_id = existing["account_id"] if existing else 1
-
-        cur.execute(
-            """INSERT INTO holdings (account_id, symbol, shares, avg_cost, total_cost, currency, total_cost_twd, user_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-               ON CONFLICT (account_id, symbol) DO UPDATE SET
+            """INSERT INTO holdings (symbol, shares, avg_cost, total_cost, currency, total_cost_twd, user_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)
+               ON CONFLICT (user_id, symbol) DO UPDATE SET
                    shares = EXCLUDED.shares,
                    avg_cost = EXCLUDED.avg_cost,
                    total_cost = EXCLUDED.total_cost,
                    currency = EXCLUDED.currency,
-                   total_cost_twd = EXCLUDED.total_cost_twd,
-                   user_id = COALESCE(holdings.user_id, EXCLUDED.user_id)""",
-            (account_id, symbol.upper(), net_shares, avg_cost, total_cost_calc, currency, total_cost_twd, user_id),
+                   total_cost_twd = EXCLUDED.total_cost_twd""",
+            (symbol.upper(), net_shares, avg_cost, total_cost_calc, currency, total_cost_twd, user_id),
         )
 
 
 @router.get("", response_model=list[TransactionOut])
 def list_transactions(current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
-            """SELECT id, account_id, symbol, LOWER(type::text) AS type,
+            """SELECT id, symbol, LOWER(type::text) AS type,
                       quantity AS shares, price, transaction_date AS date, realized_gain
                FROM transactions
                WHERE user_id = %s
@@ -95,13 +85,11 @@ def list_transactions(current_user: dict = Depends(get_current_user)):
         result = []
         for r in rows:
             d = dict(r)
-            # Cast timestamp to date (date_from_datetime_inexact if time component present)
             tx_date = d["date"]
             if hasattr(tx_date, 'date'):
                 tx_date = tx_date.date()
             result.append(TransactionOut(
                 id=d["id"],
-                account_id=d["account_id"],
                 symbol=d["symbol"],
                 type=d["type"],
                 shares=float(d["shares"]),
@@ -114,7 +102,7 @@ def list_transactions(current_user: dict = Depends(get_current_user)):
 
 @router.post("", response_model=TransactionOut)
 def create_transaction(tx: TransactionCreate, current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
     with get_db() as conn:
         cur = conn.cursor()
 
@@ -122,7 +110,7 @@ def create_transaction(tx: TransactionCreate, current_user: dict = Depends(get_c
         if tx.type.lower() == "sell":
             # Validate: cannot sell more shares than currently held
             cur.execute(
-                "SELECT shares FROM holdings WHERE symbol = %s AND user_id = %s",
+                "SELECT shares, avg_cost FROM holdings WHERE symbol = %s AND user_id = %s",
                 (tx.symbol.upper(), user_id),
             )
             h = cur.fetchone()
@@ -137,29 +125,28 @@ def create_transaction(tx: TransactionCreate, current_user: dict = Depends(get_c
                 avg_cost = float(h["avg_cost"])
                 realized_gain = (tx.price - avg_cost) * tx.shares
 
-        cur.execute(
-            "SELECT currency FROM accounts WHERE id = %s LIMIT 1",
-            (tx.account_id,),
-        )
-        acct = cur.fetchone()
-        currency = acct["currency"] if acct else "TWD"
+        # Determine currency: use TWD for TW stocks, USD for US stocks as default
+        symbol = tx.symbol.upper()
+        if symbol.isdigit():
+            currency = "TWD"
+        else:
+            currency = "USD"
 
         cur.execute(
-            """INSERT INTO transactions (account_id, symbol, type, quantity, price, transaction_date, realized_gain, user_id, currency)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-               RETURNING id, account_id, symbol, LOWER(type::text) AS type,
+            """INSERT INTO transactions (symbol, type, quantity, price, transaction_date, realized_gain, user_id, currency)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING id, symbol, LOWER(type::text) AS type,
                          quantity AS shares, price, transaction_date AS date, realized_gain""",
-            (tx.account_id, tx.symbol.upper(), tx.type.upper(), tx.shares, tx.price, tx.date, realized_gain, user_id, currency),
+            (symbol, tx.type.upper(), tx.shares, tx.price, tx.date, realized_gain, user_id, currency),
         )
         row = cur.fetchone()
 
         # Recompute holdings after BUY or SELL
-        _recompute_holdings(conn, tx.symbol, user_id)
+        _recompute_holdings(conn, symbol, user_id)
 
         d = dict(row)
         result = TransactionOut(
             id=d["id"],
-            account_id=d["account_id"],
             symbol=d["symbol"],
             type=d["type"],
             shares=float(d["shares"]),
@@ -171,7 +158,7 @@ def create_transaction(tx: TransactionCreate, current_user: dict = Depends(get_c
         log_transaction(
             action="create",
             tx_id=result.id,
-            symbol=tx.symbol.upper(),
+            symbol=symbol,
             tx_type=tx.type.upper(),
             user_id=user_id,
             details={"shares": tx.shares, "price": tx.price},
@@ -182,7 +169,7 @@ def create_transaction(tx: TransactionCreate, current_user: dict = Depends(get_c
 
 @router.delete("/{transaction_id}")
 def delete_transaction(transaction_id: int, current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(

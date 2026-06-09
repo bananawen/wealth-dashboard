@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -61,3 +61,33 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
             raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
         token = create_access_token({"sub": row["username"], "user_id": row["id"]})
         return Token(access_token=token, token_type="bearer")
+
+
+@router.put("/password")
+def change_password(
+    old_password: str = Body(...),
+    new_password: str = Body(...),
+    token: str = Depends(oauth2_scheme)
+):
+    """更換當前用戶密碼"""
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    username = payload.get("sub")
+    if not username:
+        raise HTTPException(status_code=401, detail="Token 無效")
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT hashed_password FROM users WHERE username = %s", (username,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="用戶不存在")
+
+        if not verify_password(old_password, row["hashed_password"]):
+            raise HTTPException(status_code=400, detail="舊密碼錯誤")
+
+        if old_password == new_password:
+            raise HTTPException(status_code=400, detail="新密碼不能與舊密碼相同")
+
+        hashed = hash_password(new_password)
+        cur.execute("UPDATE users SET hashed_password = %s WHERE username = %s", (hashed, username))
+        return {"message": "密碼修改成功"}

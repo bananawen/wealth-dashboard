@@ -60,6 +60,9 @@ export const apiSlice = createApi({
     register: builder.mutation<{ message: string }, { username: string; password: string }>({
       query: (body) => ({ url: '/auth/register', method: 'POST', body }),
     }),
+    changePassword: builder.mutation<{ message: string }, { old_password: string; new_password: string }>({
+      query: (body) => ({ url: '/auth/password', method: 'PUT', body }),
+    }),
 
     // ---------- Accounts ----------
     getAccounts: builder.query<Account[], void>({
@@ -155,6 +158,7 @@ export const apiSlice = createApi({
 export const {
   useLoginMutation,
   useRegisterMutation,
+  useChangePasswordMutation,
   useGetAccountsQuery,
   useCreateAccountMutation,
   useGetTransactionsQuery,

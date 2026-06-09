@@ -104,7 +104,6 @@ def _row_to_holding(row) -> HoldingOut:
     d = dict(row)
     return HoldingOut(
         id=d["id"],
-        account_id=d["account_id"],
         symbol=d["symbol"],
         shares=float(d["shares"]),
         avg_cost=float(d["avg_cost"]),
@@ -115,11 +114,11 @@ def _row_to_holding(row) -> HoldingOut:
 
 @router.get("", response_model=list[HoldingOut])
 def list_holdings(current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, account_id, symbol, shares, avg_cost, total_cost, currency "
+            "SELECT id, symbol, shares, avg_cost, total_cost, currency "
             "FROM holdings WHERE shares > 0 AND user_id = %s ORDER BY id",
             (user_id,)
         )
@@ -133,46 +132,50 @@ def create_holding(holding: HoldingCreate, current_user: dict = Depends(get_curr
     Create a holding by inserting a BUY transaction.
     The trigger on transactions table will sync holdings automatically.
     """
-    user_id = current_user.get("user_id", 1)
-    
+    user_id = current_user.get("user_id")
+
     with get_db() as conn:
         cur = conn.cursor()
-        
-        # Insert a BUY transaction - trigger will create holdings entry
+
+        # Determine currency based on symbol
+        symbol = holding.symbol.upper()
+        currency = "TWD" if symbol.isdigit() else "USD"
+
+        # Insert a BUY transaction - _recompute_holdings will create holdings entry
         cur.execute(
-            """INSERT INTO transactions (account_id, symbol, type, quantity, price, transaction_date, user_id)
-               VALUES (%s, %s, 'BUY', %s, %s, NOW(), %s)
-               RETURNING id, account_id, symbol, quantity, price, user_id""",
-            (holding.account_id, holding.symbol.upper(), holding.shares, holding.avg_cost, user_id),
+            """INSERT INTO transactions (symbol, type, quantity, price, transaction_date, user_id, currency)
+               VALUES (%s, 'BUY', %s, %s, NOW(), %s, %s)
+               RETURNING id, symbol, quantity, price, user_id""",
+            (symbol, holding.shares, holding.avg_cost, user_id, currency),
         )
         tx_row = cur.fetchone()
         conn.commit()
-        
-        # Fetch the newly created holding (trigger created it)
+
+        # Fetch the newly created holding
         cur.execute(
-            "SELECT id, account_id, symbol, shares, avg_cost, total_cost, currency "
-            "FROM holdings WHERE account_id = %s AND symbol = %s AND user_id = %s",
-            (holding.account_id, holding.symbol.upper(), user_id),
+            "SELECT id, symbol, shares, avg_cost, total_cost, currency "
+            "FROM holdings WHERE symbol = %s AND user_id = %s",
+            (symbol, user_id),
         )
         h_row = cur.fetchone()
-        
+
         if h_row:
             result = _row_to_holding(h_row)
             log_holding_change(
                 action="create",
                 holding_id=result.id,
-                symbol=holding.symbol.upper(),
+                symbol=symbol,
                 user_id=user_id,
                 details={"shares": holding.shares, "avg_cost": holding.avg_cost, "tx_id": tx_row["id"]},
             )
             return result
-        
+
         raise HTTPException(status_code=500, detail="Failed to create holding")
 
 
 @router.put("/{holding_id}", response_model=HoldingOut)
 def update_holding(holding_id: int, holding: HoldingUpdate, current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
     fields = []
     vals = []
     if holding.symbol is not None:
@@ -198,7 +201,7 @@ def update_holding(holding_id: int, holding: HoldingUpdate, current_user: dict =
         cur = conn.cursor()
         cur.execute(
             f"UPDATE holdings SET {', '.join(fields)} WHERE id = %s AND user_id = %s "
-            f"RETURNING id, account_id, symbol, shares, avg_cost, total_cost, currency",
+            f"RETURNING id, symbol, shares, avg_cost, total_cost, currency",
             vals
         )
         row = cur.fetchone()
@@ -233,11 +236,11 @@ def get_computed_holdings(response: Response, current_user: dict = Depends(get_c
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, account_id, symbol, shares, avg_cost, total_cost, currency "
+            "SELECT id, symbol, shares, avg_cost, total_cost, currency "
             "FROM holdings WHERE shares > 0 AND user_id = %s ORDER BY symbol",
             (user_id,)
         )
@@ -294,7 +297,7 @@ def get_computed_holdings(response: Response, current_user: dict = Depends(get_c
 
 @router.delete("/{holding_id}")
 def delete_holding(holding_id: int, current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(

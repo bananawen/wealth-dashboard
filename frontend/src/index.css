@@ -20,6 +20,7 @@
   --error: #EF4444;
   --profit: #22C55E;
   --loss: #EF4444;
+  --info: #3B82F6;
 }
 
 /* Dark mode */
@@ -39,6 +40,7 @@
   --error: #F87171;
   --profit: #4ADE80;
   --loss: #F87171;
+  --info: #60A5FA;
 }
 
 * {

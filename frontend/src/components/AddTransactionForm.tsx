@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useGetAccountsQuery, useCreateTransactionMutation, useUpdateTransactionMutation } from '../store/apiSlice';
+import { useCreateTransactionMutation, useUpdateTransactionMutation } from '../store/apiSlice';
 import { Search, X, Plus } from 'lucide-react';
 import DatePicker from './DatePicker';
 import type { TransactionType } from '../types';
@@ -17,7 +17,6 @@ const STOCK_SUGGESTIONS = [
 ];
 
 interface FormState {
-  account_id: string;
   symbol: string;
   type: TransactionType | '';
   shares: string;
@@ -30,7 +29,6 @@ interface AddTransactionFormProps {
   onCancel?: () => void;
   editTransaction?: {
     id: number;
-    account_id: number;
     symbol: string;
     type: TransactionType;
     shares: number;
@@ -49,7 +47,6 @@ export default function AddTransactionForm({
   onCreated,
 }: AddTransactionFormProps) {
   const [form, setForm] = useState<FormState>({
-    account_id: '',
     symbol: '',
     type: '',
     shares: '',
@@ -61,7 +58,6 @@ export default function AddTransactionForm({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data: accounts = [] } = useGetAccountsQuery(undefined);
   const [createTransaction] = useCreateTransactionMutation();
   const [updateTransaction] = useUpdateTransactionMutation();
 
@@ -69,7 +65,6 @@ export default function AddTransactionForm({
   useEffect(() => {
     if (editTransaction) {
       setForm({
-        account_id: String(editTransaction.account_id),
         symbol: editTransaction.symbol,
         type: editTransaction.type,
         shares: String(editTransaction.shares),
@@ -100,7 +95,6 @@ export default function AddTransactionForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const payload = {
-      account_id: Number(form.account_id),
       symbol: form.symbol.toUpperCase(),
       type: form.type as TransactionType,
       shares: Number(form.shares),
@@ -118,7 +112,6 @@ export default function AddTransactionForm({
       onSuccess?.();
       onEditComplete?.();
       setForm({
-        account_id: form.account_id,
         symbol: '',
         type: '',
         shares: '',
@@ -133,7 +126,7 @@ export default function AddTransactionForm({
     <div className="card p-4 sm:p-6 animate-fade-in" style={{ minWidth: 0 }}>
       <div className="flex items-center justify-between mb-4" style={{ minWidth: 0 }}>
         <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2" style={{ minWidth: 0 }}>
-          <Plus className="w-5 h-5 text-blue-500" />{editId ? '編輯交易' : '新增交易'}
+          <Plus className="w-5 h-5 text-[var(--accent)]" />{editId ? '編輯交易' : '新增交易'}
         </h2>
         {onCancel && (
           <button onClick={onCancel} className="p-1 hover:bg-[var(--bg-secondary)] rounded">
@@ -143,21 +136,6 @@ export default function AddTransactionForm({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
-        <div>
-          <label className="block text-sm opacity-60 mb-1">券商帳號</label>
-          <select
-            value={form.account_id}
-            onChange={e => setForm(f => ({ ...f, account_id: e.target.value }))}
-            className="input-field"
-            required
-          >
-            <option value="">選擇帳號</option>
-            {accounts.map(a => (
-              <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
-            ))}
-          </select>
-        </div>
-
         <div className="relative">
           <label className="block text-sm opacity-60 mb-1">股票代號</label>
           <div className="relative">

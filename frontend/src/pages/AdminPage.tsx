@@ -6,10 +6,10 @@ import type { DbStats, LogType, AuditLog } from '../types';
 
 function LogTypeBadge({ type }: { type: LogType }) {
   const styles: Record<LogType, string> = {
-    scrape: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    db_change: 'bg-green-500/20 text-green-400 border-green-500/30',
+    scrape: 'bg-[var(--info)]/20 text-[var(--info)] border-[var(--info)]/30',
+    db_change: 'bg-[var(--success)]/20 text-[var(--success)] border-[var(--success)]/30',
     api_call: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-    error: 'bg-red-500/20 text-red-400 border-red-500/30',
+    error: 'bg-[var(--error)]/20 text-[var(--error)] border-[var(--error)]/30',
   };
   const labels: Record<LogType, string> = { scrape: '爬蟲', db_change: '異動', api_call: 'API', error: '錯誤' };
   return (
@@ -86,7 +86,7 @@ export default function AdminPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {loading && !dbStats ? (
           <div className="flex items-center justify-center py-12">
-            <RefreshCw className="animate-spin text-blue-500 w-8 h-8" />
+            <RefreshCw className="animate-spin text-[var(--info)] w-8 h-8" />
           </div>
         ) : (
           <>
@@ -157,9 +157,9 @@ export default function AdminPage() {
                         <div className="text-xs opacity-50">{s.last_run ? `上次: ${new Date(s.last_run).toLocaleString()}` : '從未執行'}</div>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded ${
-                        s.status === 'running' ? 'bg-yellow-500/20 text-yellow-400' :
-                        s.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                        'bg-green-500/20 text-green-400'
+                        s.status === 'running' ? 'bg-[var(--warning)]/20 text-[var(--warning)]' :
+                        s.status === 'error' ? 'bg-[var(--error)]/20 text-[var(--error)]' :
+                        'bg-[var(--success)]/20 text-[var(--success)]'
                       }`}>{s.status}</span>
                     </div>
                   ))}
@@ -196,7 +196,7 @@ export default function AdminPage() {
 
               {logLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <RefreshCw className="animate-spin text-blue-500 w-6 h-6" />
+                  <RefreshCw className="animate-spin text-[var(--info)] w-6 h-6" />
                 </div>
               ) : auditLogs.length === 0 ? (
                 <div className="p-8 text-center opacity-50 text-sm">

@@ -21,7 +21,7 @@ export default function StatusBar() {
     : null;
 
   return (
-    <div className="bg-[var(--bg-secondary)] border-b border-blue-500/20 px-3 sm:px-6 py-1.5">
+    <div className="bg-[var(--bg-secondary)] border-b border-[var(--accent)]/20 px-3 sm:px-6 py-1.5">
       <div className="max-w-7xl mx-auto flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-1.5 text-xs">
           <StatusDot ok={status?.connected} />

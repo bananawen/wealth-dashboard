@@ -47,7 +47,6 @@ export type TransactionType = 'buy' | 'sell';
 
 export interface Transaction {
   id: number;
-  account_id: number;
   symbol: string;
   type: TransactionType;
   shares: number;
@@ -57,7 +56,6 @@ export interface Transaction {
 }
 
 export interface CreateTransactionRequest {
-  account_id: number;
   symbol: string;
   type: TransactionType;
   shares: number;
@@ -70,7 +68,6 @@ export interface UpdateTransactionRequest extends Partial<CreateTransactionReque
 // ---------- Holding ----------
 export interface Holding {
   id: number;
-  account_id: number;
   symbol: string;
   shares: number;
   cost_basis: number;
@@ -96,7 +93,6 @@ export interface ComputedHolding {
 }
 
 export interface CreateHoldingRequest {
-  account_id: number;
   symbol: string;
   shares: number;
   avg_cost: number;

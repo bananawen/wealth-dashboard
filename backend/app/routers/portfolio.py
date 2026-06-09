@@ -36,7 +36,7 @@ def _get_currency_rate(currency_cache: dict, currency: str) -> float:
 
 @router.get("/summary", response_model=PortfolioSummary)
 def get_portfolio_summary(current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
 
     # Get USD→TWD rate from currency_cache
     currency_cache = {}
@@ -145,7 +145,7 @@ def get_portfolio_summary(current_user: dict = Depends(get_current_user)):
 @router.get("/history")
 def get_history(current_user: dict = Depends(get_current_user)):
     """歷史總市值趨勢（從 portfolio_snapshots）"""
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -158,7 +158,7 @@ def get_history(current_user: dict = Depends(get_current_user)):
 
 @router.post("/snapshot")
 def create_snapshot(snap: SnapshotCreate, current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("user_id", 1)
+    user_id = current_user.get("user_id")
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(

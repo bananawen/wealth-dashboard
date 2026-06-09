@@ -9,7 +9,6 @@ import {
   useGetPortfolioSummaryQuery,
   useGetComputedHoldingsQuery,
   useGetTransactionsQuery,
-  useGetAccountsQuery,
   useGetHistoryQuery,
   useGetVersionQuery,
   useDeleteTransactionMutation,
@@ -23,7 +22,6 @@ import type {
   DashboardTab,
   ComputedHolding,
   Transaction,
-  Account,
   VersionInfo,
   UndoEntry,
 } from '../types';
@@ -107,7 +105,6 @@ export default function DashboardPage() {
   const { data: summary } = useGetPortfolioSummaryQuery(undefined);
   const { data: computedHoldings = [] } = useGetComputedHoldingsQuery(undefined);
   const { data: transactions = [] } = useGetTransactionsQuery(undefined);
-  const { data: accounts = [] } = useGetAccountsQuery(undefined);
   const { data: history = [] } = useGetHistoryQuery(undefined);
   const { data: versionInfo } = useGetVersionQuery(undefined);
 
@@ -401,7 +398,6 @@ export default function DashboardPage() {
             ) : (
               <div className="divide-y divide-[var(--border-color)]">
                 {transactions.map((tx: Transaction) => {
-                  const account = accounts.find((a: Account) => a.id === tx.account_id);
                   const dateFormatted = formatDateMMMDDYY(tx.date);
                   return (
                     <div
@@ -409,11 +405,9 @@ export default function DashboardPage() {
                       onClick={() => handleEdit(tx)}
                       className="px-3 sm:px-4 py-2 sm:py-3 cursor-pointer hover:bg-[var(--bg-secondary)]/50 transition-colors group relative"
                     >
-                      {/* Line 1: date | account | type badge */}
+                      {/* Line 1: date | type badge */}
                       <div className="flex items-center gap-2 text-xs opacity-70 mb-0.5">
                         <span className="font-mono">{dateFormatted}</span>
-                        <span className="opacity-50">|</span>
-                        <span>{account?.name || tx.account_id}</span>
                       </div>
                       {/* Line 2: symbol | amount */}
                       <div className="flex items-center justify-between pr-6">

@@ -3,10 +3,10 @@ import ThemeToggle from './ThemeToggle'
 
 export default function Header({ onRefresh, refreshing }) {
   return (
-    <div className="bg-[var(--hermes-bg)] border-b border-blue-500/20 px-6 py-4 flex items-center justify-between">
+    <div className="bg-[var(--hermes-bg)] border-b border-[var(--accent)]/20 px-6 py-4 flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
-          <span className="text-blue-400 text-lg">📈</span>
+        <div className="w-8 h-8 rounded-lg bg-[var(--accent)]/20 flex items-center justify-center">
+          <span className="text-[var(--accent)] text-lg">📈</span>
         </div>
         <h1 className="text-xl font-semibold text-slate-100">個人財富管理</h1>
       </div>
