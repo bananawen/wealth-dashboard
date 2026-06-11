@@ -89,7 +89,7 @@ function StatCard({ label, value, sub, positive }: StatCardProps) {
   return (
     <div className="card p-3 sm:p-4 animate-fade-in min-w-0">
       <div className="text-xs sm:text-sm opacity-60 truncate">{label}</div>
-      <div className={`text-lg sm:text-2xl font-bold mt-1 ${positive === undefined ? 'text-inherit' : positive ? 'text-[var(--loss)]' : 'text-[var(--profit)]'} truncate`}>
+      <div className={`text-lg sm:text-2xl font-bold mt-1 ${positive === undefined ? 'text-inherit' : positive ? 'text-[var(--profit)]' : 'text-[var(--loss)]'} truncate`}>
         {value}
       </div>
       {sub && <div className="text-xs opacity-50 mt-1 truncate">{sub}</div>}
@@ -359,7 +359,7 @@ export default function DashboardPage() {
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">{formatByCurrency(avgPrice, currency)}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">{formatByCurrency(cost, currency)}</td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">{formatByCurrency(mv, currency)}</td>
-                          <td className={`px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold ${gain >= 0 ? 'text-[var(--loss)]' : 'text-[var(--profit)]'}`}>
+                          <td className={`px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold ${gain >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                             {gain >= 0 ? '+' : ''}{formatByCurrency(Math.abs(gain), currency)}
                             <span className="text-xs opacity-70 ml-1">({gainPct >= 0 ? '+' : ''}{gainPct.toFixed(2)}%)</span>
                           </td>
