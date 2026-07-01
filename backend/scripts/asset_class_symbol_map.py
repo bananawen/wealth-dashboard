@@ -1,0 +1,52 @@
+ASSET_CLASS_SYMBOL_MAP = {
+    # Cash-like
+    "CASH": "cash",
+    "USD": "cash",
+    "TWD": "cash",
+    "NTD": "cash",
+    "NT$": "cash",
+    "現金": "cash",
+
+    # Precious metals
+    "GLD": "precious_metal",
+    "IAU": "precious_metal",
+    "SLV": "precious_metal",
+
+    # Bond / fixed income ETFs
+    "BND": "bond",
+    "AGG": "bond",
+    "TLT": "bond",
+    "IEF": "bond",
+    "SHY": "bond",
+    "LQD": "bond",
+    "HYG": "bond",
+    "EMB": "bond",
+    "TIP": "bond",
+    "MUB": "bond",
+    "00679B": "bond",
+    "00687B": "bond",
+    "00719B": "bond",
+    "00720B": "bond",
+    "00725B": "bond",
+    "00740B": "bond",
+    "00741B": "bond",
+
+    # Equity / stock ETFs and stocks with confirmed semantics in this repo
+    "SPY": "equity",
+    "QQQ": "equity",
+    "VOO": "equity",
+    "VTI": "equity",
+    "IWM": "equity",
+    "VEA": "equity",
+    "VWO": "equity",
+    "AAPL": "equity",
+    "MSFT": "equity",
+    "GOOGL": "equity",
+    "AMZN": "equity",
+    "NVDA": "equity",
+    "META": "equity",
+    "TSLA": "equity",
+    "0050": "equity",
+    "0056": "equity",
+    "00887": "equity",
+}

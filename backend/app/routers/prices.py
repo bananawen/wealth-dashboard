@@ -1,14 +1,10 @@
-"""
-Thin async router — delegates all DB logic to service layer.
-"""
 from datetime import date, timedelta
-from fastapi import APIRouter, Query, Depends
-from pydantic import BaseModel
-from typing import Optional, List
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 
-from ..database import get_session
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+
+from ..database import get_db
+from ..routers.auth import get_current_user
 
 router = APIRouter(prefix="/prices", tags=["prices"])
 
@@ -24,137 +20,110 @@ class PriceRecord(BaseModel):
     currency: str
 
 
-# ── Taiwan ───────────────────────────────────────────────────────────────────
-
-@router.get("/tw", response_model=List[PriceRecord])
-async def get_taiwan_price(
-    symbol: str = Query(..., description="Taiwan stock code, e.g. 2330"),
-    days: int = Query(30, ge=1, le=3650),
-    session: AsyncSession = Depends(get_session),
-):
-    """
-    Taiwan stock historical OHLCV.
-    Reads from price_history_tw (TWSE + TPEx data merged into one table).
-    """
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days * 2)
-
-    result = await session.execute(
-        text("""
-            SELECT symbol, price_date::text, open, high, low, close, volume, currency
-            FROM price_history_tw
-            WHERE symbol = :symbol
-              AND price_date <= :end_date
-              AND price_date >= :start_date
-            ORDER BY price_date DESC
-            LIMIT :days
-        """),
-        {"symbol": symbol, "end_date": end_date, "start_date": start_date, "days": days},
-    )
-    rows = result.fetchall()
-
-    return [
-        PriceRecord(
-            symbol=r[0],
-            price_date=r[1],
-            open=float(r[2]),
-            high=float(r[3]),
-            low=float(r[4]),
-            close=float(r[5]),
-            volume=int(r[6]),
-            currency=r[7],
-        )
-        for r in rows
-    ]
-
-
-# ── US ───────────────────────────────────────────────────────────────────────
-
-@router.get("/us", response_model=List[PriceRecord])
-async def get_us_price(
-    symbol: str = Query(..., description="US stock ticker, e.g. AAPL"),
-    days: int = Query(30, ge=1, le=3650),
-    session: AsyncSession = Depends(get_session),
-):
-    """
-    US stock historical OHLCV.
-    Reads from price_history_us.
-    """
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days * 2)
-
-    result = await session.execute(
-        text("""
-            SELECT symbol, price_date::text, open, high, low, close, volume, currency
-            FROM price_history_us
-            WHERE symbol = :symbol
-              AND price_date <= :end_date
-              AND price_date >= :start_date
-            ORDER BY price_date DESC
-            LIMIT :days
-        """),
-        {"symbol": symbol.upper(), "end_date": end_date, "start_date": start_date, "days": days},
-    )
-    rows = result.fetchall()
-
-    return [
-        PriceRecord(
-            symbol=r[0],
-            price_date=r[1],
-            open=float(r[2]),
-            high=float(r[3]),
-            low=float(r[4]),
-            close=float(r[5]),
-            volume=int(r[6]),
-            currency=r[7],
-        )
-        for r in rows
-    ]
-
-
-# ── Latest (union, for dashboard) ────────────────────────────────────────────
-
 class LatestPrice(BaseModel):
     symbol: str
     price_date: str
     close: float
     volume: int
     currency: str
-    market: str   # 'TW' or 'US'
+    market: str
 
 
-@router.get("/latest", response_model=List[LatestPrice])
-async def get_latest_prices(session: AsyncSession = Depends(get_session)):
-    """
-    Most recent closing price for every symbol in both price tables.
-    Useful for dashboard instant-refresh without scraping.
-    """
-    # TW — latest per symbol
-    tw_result = await session.execute(text("""
-        SELECT DISTINCT ON (symbol)
-            symbol, price_date::text, close, volume, currency, 'TW' AS market
-        FROM price_history_tw
-        ORDER BY symbol, price_date DESC
-    """))
-    tw_rows = tw_result.fetchall()
+def _fetch_price_rows(table: str, symbol: str, days: int) -> list[PriceRecord]:
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days * 2)
 
-    # US — latest per symbol
-    us_result = await session.execute(text("""
-        SELECT DISTINCT ON (symbol)
-            symbol, price_date::text, close, volume, currency, 'US' AS market
-        FROM price_history_us
-        ORDER BY symbol, price_date DESC
-    """))
-    us_rows = us_result.fetchall()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT symbol, price_date, open, high, low, close, volume, currency
+            FROM {table}
+            WHERE symbol = %s
+              AND price_date <= %s
+              AND price_date >= %s
+            ORDER BY price_date DESC
+            LIMIT %s
+            """,
+            (symbol, end_date.isoformat(), start_date.isoformat(), days),
+        )
+        rows = cur.fetchall()
+
+    return [
+        PriceRecord(
+            symbol=str(row["symbol"]),
+            price_date=str(row["price_date"]),
+            open=float(row["open"] or 0),
+            high=float(row["high"] or 0),
+            low=float(row["low"] or 0),
+            close=float(row["close"] or 0),
+            volume=int(row["volume"] or 0),
+            currency=str(row["currency"] or ""),
+        )
+        for row in rows
+    ]
+
+
+@router.get("/tw", response_model=list[PriceRecord])
+def get_taiwan_price(
+    symbol: str = Query(..., description="Taiwan stock code, e.g. 2330"),
+    days: int = Query(30, ge=1, le=3650),
+    current_user: dict = Depends(get_current_user),
+):
+    del current_user
+    return _fetch_price_rows("price_history_tw", symbol.strip().upper(), days)
+
+
+@router.get("/us", response_model=list[PriceRecord])
+def get_us_price(
+    symbol: str = Query(..., description="US stock ticker, e.g. AAPL"),
+    days: int = Query(30, ge=1, le=3650),
+    current_user: dict = Depends(get_current_user),
+):
+    del current_user
+    return _fetch_price_rows("price_history_us", symbol.strip().upper(), days)
+
+
+@router.get("/latest", response_model=list[LatestPrice])
+def get_latest_prices(current_user: dict = Depends(get_current_user)):
+    del current_user
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT symbol, price_date, close, volume, currency, 'TW' AS market
+            FROM (
+                SELECT symbol, price_date, close, volume, currency,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY price_date DESC) AS rn
+                FROM price_history_tw
+            )
+            WHERE rn = 1
+            """
+        )
+        tw_rows = cur.fetchall()
+
+        cur.execute(
+            """
+            SELECT symbol, price_date, close, volume, currency, 'US' AS market
+            FROM (
+                SELECT symbol, price_date, close, volume, currency,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY price_date DESC) AS rn
+                FROM price_history_us
+            )
+            WHERE rn = 1
+            """
+        )
+        us_rows = cur.fetchall()
 
     return [
         LatestPrice(
-            symbol=r[0],
-            price_date=r[1],
-            close=float(r[2]),
-            volume=int(r[3]),
-            currency=r[4],
-            market=r[5],
+            symbol=str(row["symbol"]),
+            price_date=str(row["price_date"]),
+            close=float(row["close"] or 0),
+            volume=int(row["volume"] or 0),
+            currency=str(row["currency"] or ""),
+            market=str(row["market"]),
         )
-        for r in tw_rows + us_rows
+        for row in [*tw_rows, *us_rows]
     ]

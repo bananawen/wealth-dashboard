@@ -1,13 +1,74 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLoginMutation, useRegisterMutation } from '../store/apiSlice';
-import { useTheme } from '../context/ThemeContext';
+import InlineNotice from '../components/InlineNotice';
+import PasswordField from '../components/PasswordField';
+
+const PASSWORD_MIN_LENGTH = 8;
+type LoginNotice = { tone: 'error' | 'success'; title: string; message: string };
+
+function getFriendlyError(err: unknown, isRegister: boolean) {
+  const extractDetail = (detail: unknown): string | null => {
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+      const first = detail[0] as { msg?: unknown; message?: unknown; loc?: unknown };
+      if (typeof first?.msg === 'string') return first.msg;
+      if (typeof first?.message === 'string') return first.message;
+    }
+    return null;
+  };
+
+  if (typeof err === 'object' && err !== null && 'status' in err) {
+    const status = (err as { status?: number | string }).status;
+    const data = (err as { data?: { detail?: string } }).data;
+
+    if (status === 'FETCH_ERROR' || status === 'TIMEOUT_ERROR' || status === 'PARSING_ERROR') {
+      return '連線失敗，請稍後再試';
+    }
+
+    if (status === 401 && !isRegister) {
+      return '帳號或密碼錯誤';
+    }
+
+    const detail = extractDetail((data as { detail?: unknown } | undefined)?.detail);
+    if (detail) {
+      return detail;
+    }
+
+    if (status === 400 && isRegister) {
+      return '註冊資料有誤，請檢查帳號與密碼';
+    }
+    if (typeof status === 'number' && status >= 500) {
+      return '登入服務暫時異常，請稍後再試';
+    }
+  }
+
+  if (err instanceof Error && err.message) {
+    if (err.message.toLowerCase().includes('failed to fetch')) {
+      return '連線失敗，請稍後再試';
+    }
+    return err.message;
+  }
+
+  return '登入服務暫時異常，請稍後再試';
+}
+
+function validatePassword(password: string) {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return `密碼至少需要 ${PASSWORD_MIN_LENGTH} 個字元`;
+  }
+  if (/\s/.test(password)) {
+    return '密碼不能包含空白字元';
+  }
+  return '';
+}
 
 export default function LoginPage() {
   const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [notice, setNotice] = useState<LoginNotice | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -16,26 +77,44 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setNotice(null);
+
+    if (isRegister) {
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        setNotice({ tone: 'error', title: '註冊失敗', message: passwordError });
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setNotice({ tone: 'error', title: '註冊失敗', message: '密碼與確認密碼不一致' });
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       if (isRegister) {
         await register({ username, password }).unwrap();
         setIsRegister(false);
-        setError('註冊成功，請登入');
+        setPassword('');
+        setConfirmPassword('');
+        setNotice({
+          tone: 'success',
+          title: '註冊成功',
+          message: '帳號已建立，請使用新帳號登入。單一使用者部署中，第一個註冊帳號會自動擁有系統管理權限。',
+        });
       } else {
         const data = await login({ username, password }).unwrap();
         localStorage.setItem('token', data.access_token);
         navigate('/');
       }
     } catch (err: unknown) {
-      const message =
-        typeof err === 'object' && err !== null && 'data' in err
-          ? (err as { data: { detail?: string } }).data?.detail ?? String((err as { status?: number }).status ?? '')
-          : err instanceof Error
-          ? err.message
-          : 'Request failed';
-      setError(message || 'Request failed');
+      setNotice({
+        tone: 'error',
+        title: isRegister ? '註冊失敗' : '登入失敗',
+        message: getFriendlyError(err, isRegister),
+      });
     } finally {
       setLoading(false);
     }
@@ -59,37 +138,46 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
-              style={{
-                backgroundColor: 'var(--bg-secondary)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--text-primary)',
-              }}
+              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-4 py-3 text-[var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/45 focus:border-[var(--accent)]"
               placeholder="帳號"
+              autoComplete="username"
               required
             />
           </div>
-          <div>
-            <label className="block text-[var(--text-secondary)] text-sm mb-1">密碼</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
-              style={{
-                backgroundColor: 'var(--bg-secondary)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--text-primary)',
-              }}
-              placeholder="密碼"
-              required
-            />
-          </div>
-          {error && (
-            <div className="text-[var(--error)] text-sm text-center py-2 rounded-lg" style={{ backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)' }}>
-              {error}
-            </div>
+          <PasswordField
+            label="密碼"
+            value={password}
+            onChange={setPassword}
+            placeholder="密碼"
+            autoComplete={isRegister ? 'new-password' : 'current-password'}
+            minLength={PASSWORD_MIN_LENGTH}
+            required
+            helperText={isRegister ? `至少 ${PASSWORD_MIN_LENGTH} 字元，不能有空白` : undefined}
+          />
+          {isRegister && (
+            <>
+              <PasswordField
+                label="確認密碼"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                placeholder="再次輸入密碼"
+                autoComplete="new-password"
+                minLength={PASSWORD_MIN_LENGTH}
+                required={isRegister}
+              />
+              <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)]/55 px-3 py-2 text-xs text-[var(--text-secondary)]">
+                單一使用者部署：第一個註冊帳號會自動成為管理者，登入後可存取系統管理頁。
+              </div>
+            </>
           )}
+          {notice ? (
+            <InlineNotice
+              tone={notice.tone}
+              title={notice.title}
+              message={notice.message}
+              onDismiss={() => setNotice(null)}
+            />
+          ) : null}
           <button
             type="submit"
             disabled={loading}
@@ -110,7 +198,11 @@ export default function LoginPage() {
         </form>
         <p
           className="text-[var(--accent)] hover:text-[var(--accent-hover)] text-sm text-center mt-4 cursor-pointer hover:underline transition-colors"
-          onClick={() => setIsRegister(!isRegister)}
+          onClick={() => {
+            setIsRegister(!isRegister);
+            setNotice(null);
+            setConfirmPassword('');
+          }}
         >
           {isRegister ? '已有帳號？登入' : '沒有帳號？註冊'}
         </p>

@@ -8,18 +8,17 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-import psycopg2
-from ..config import get_settings
+from ..database import get_db
 from ..logging_config import logger
 
 __all__ = ["ActionLogger", "LogType", "LogLevel"]
 
 
 class LogType(str, Enum):
-    SCRAPE = "scrape"          # 爬蟲執行
-    DB_CHANGE = "db_change"    # 資料庫變更
-    API_CALL = "api_call"      # API 呼叫
-    ERROR = "error"            # 錯誤記錄
+    SCRAPE = "scraper"         # 爬蟲執行
+    DB_CHANGE = "transaction"  # 資料庫變更
+    API_CALL = "admin"         # 管理操作
+    ERROR = "admin"            # 系統/管理錯誤
 
 
 class LogLevel(str, Enum):
@@ -143,27 +142,24 @@ class ActionLogger:
 
     def _persist_to_db(self, record: dict):
         try:
-            settings = get_settings()
-            conn = psycopg2.connect(settings.DATABASE_URL)
-            cur = conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO audit_log (timestamp, type, level, message, details, symbol, user_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    record["timestamp"],
-                    record["type"],
-                    record["level"],
-                    record["message"],
-                    json.dumps(record["details"]),
-                    record.get("symbol", ""),
-                    record.get("user_id"),
-                ),
-            )
-            conn.commit()
-            cur.close()
-            conn.close()
+            with get_db() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO audit_log (timestamp, type, level, message, details, symbol, user_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        record["timestamp"],
+                        record["type"],
+                        record["level"],
+                        record["message"],
+                        json.dumps(record["details"]),
+                        record.get("symbol", ""),
+                        record.get("user_id"),
+                    ),
+                )
+                cur.close()
         except Exception:
             # Don't let DB errors break the request
             self._file_logger.warning(f"audit_log write failed: {record.get('message', '')[:80]}")

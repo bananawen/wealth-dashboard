@@ -1,5 +1,6 @@
 import { useGetStatusQuery } from '../store/apiSlice';
 import { Database, AlertCircle, CheckCircle, RefreshCw, Clock } from 'lucide-react';
+import { SemanticBadge } from './UIState';
 
 const REFRESH_INTERVAL = 60_000;
 
@@ -8,9 +9,14 @@ function StatusDot({ ok }: { ok?: boolean }) {
   return <AlertCircle className="w-3 h-3 text-[var(--error)] inline-block" />;
 }
 
-export default function StatusBar() {
+interface StatusBarProps {
+  isAdmin: boolean;
+}
+
+export default function StatusBar({ isAdmin }: StatusBarProps) {
   const { data: status, isLoading: loading, refetch } = useGetStatusQuery(undefined, {
     pollingInterval: REFRESH_INTERVAL,
+    skip: !isAdmin,
   });
 
   const tableCount = status?.tables?.length ?? 0;
@@ -21,23 +27,30 @@ export default function StatusBar() {
     : null;
 
   return (
-    <div className="bg-[var(--bg-secondary)] border-b border-[var(--accent)]/20 px-3 sm:px-6 py-1.5">
-      <div className="max-w-7xl mx-auto flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-1.5 text-xs">
+    <div className="overflow-x-hidden border-b border-[var(--accent)]/20 bg-[var(--bg-secondary)] px-3 py-1.5 sm:px-6">
+      <div className="mx-auto flex max-w-7xl min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+        {!isAdmin ? (
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--text-muted)]">
+            <Database className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <span>一般使用模式</span>
+          </div>
+        ) : (
+          <>
+        <div className="flex shrink-0 items-center gap-1.5 text-xs">
           <StatusDot ok={status?.connected} />
           <span className="text-[var(--text-secondary)] hidden sm:inline">DB</span>
-          <span className={status?.connected ? 'text-[var(--success)]' : 'text-[var(--error)]'}>
+          <SemanticBadge tone={status ? (status.connected ? 'success' : 'error') : 'loading'}>
             {status ? (status.connected ? '連線中' : '連線失敗') : '載入中…'}
-          </span>
+          </SemanticBadge>
         </div>
 
         <div className="w-px h-4 bg-[var(--border-color)] hidden sm:block" />
 
-        <div className="flex items-center gap-1.5 text-xs">
+        <div className="flex min-w-0 items-center gap-1.5 text-xs">
           <Database className="w-3.5 h-3.5 text-[var(--accent)]" />
           <span className="text-[var(--text-secondary)]">{tableCount} 表</span>
           <span className="text-[var(--text-muted)]">/</span>
-          <span className="text-[var(--text-primary)]">{totalRows.toLocaleString()} 筆</span>
+          <span className="truncate text-[var(--text-primary)]">{totalRows.toLocaleString()} 筆</span>
         </div>
 
         <div className="w-px h-4 bg-[var(--border-color)] hidden sm:block" />
@@ -59,17 +72,22 @@ export default function StatusBar() {
         {lastScraperTime && (
           <>
             <div className="w-px h-4 bg-[var(--border-color)] hidden sm:block" />
-            <div className="flex items-center gap-1 text-xs">
+            <div className="hidden items-center gap-1 text-xs sm:flex">
               <Clock className="w-3 h-3 text-[var(--text-muted)]" />
               <span className="text-[var(--text-muted)]">更新</span>
-              <span className="text-[var(--text-secondary)]">{lastScraperTime}</span>
+              <SemanticBadge tone="info" className="text-[10px]">
+                {lastScraperTime}
+              </SemanticBadge>
             </div>
+          </>
+        )}
           </>
         )}
 
         <button
           onClick={() => refetch()}
-          className="ml-auto flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors p-1 rounded hover:bg-[var(--bg-tertiary)]"
+          disabled={!isAdmin}
+          className="ml-auto flex shrink-0 items-center gap-1 rounded p-1 text-xs text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-secondary)]"
           title="重新整理"
         >
           <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />

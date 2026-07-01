@@ -1,4 +1,9 @@
 # 個人財富管理網站 測試報告
+
+> [!WARNING]
+> 本文件是 **2026-06-06 的歷史測試報告**。其中 `/accounts`、PostgreSQL 連線、舊 `user_id` 與當時資料內容，**不代表目前 2026-06-28 的 active schema 與 active API surface**。
+> 目前 active runtime 已改為 SQLite `backend/wealth.db`，且 `accounts` active surface 已移除。
+
 **日期：** 2026-06-06 05:33 GMT+8  
 **測試人員：** 小龍女 🐉  
 **環境：** 本機開發環境 (localhost)

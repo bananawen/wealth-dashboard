@@ -1,9 +1,0 @@
---- src/store/apiSlice.ts
-+++ src/store/apiSlice.ts
-@@ -175,5 +175,6 @@ export const {
-   useGetStatusQuery,
-   useGetVersionQuery,
-   useGetDbStatsQuery,
-   useGetScraperStatusQuery,
-+  useGetAuditLogsQuery,
- } = apiSlice;

@@ -27,23 +27,26 @@ export interface RegisterRequest {
   password: string;
 }
 
-// ---------- Account ----------
-export interface Account {
-  id: number;
-  name: string;
-  type: string; // 'brokerage' | 'crypto' | 'bank' | ...
-  currency: string;
-  created_at?: string;
-}
-
-export interface CreateAccountRequest {
-  name: string;
-  type: string;
-  currency: string;
-}
-
 // ---------- Transaction ----------
 export type TransactionType = 'buy' | 'sell';
+export type TransactionCategory = 'long_term' | 'short_term' | 'etf' | 'stock' | 'dca';
+export type AssetClass = 'equity' | 'bond' | 'precious_metal' | 'cash' | 'other';
+export type Sector =
+  | 'semiconductor'
+  | 'technology'
+  | 'financial'
+  | 'communication'
+  | 'consumer'
+  | 'industrial'
+  | 'healthcare'
+  | 'energy'
+  | 'materials'
+  | 'utilities'
+  | 'real_estate'
+  | 'broad_market'
+  | 'high_dividend'
+  | 'thematic'
+  | 'other';
 
 export interface Transaction {
   id: number;
@@ -52,6 +55,13 @@ export interface Transaction {
   shares: number;
   price: number;
   date: string; // YYYY-MM-DD
+  notes?: string | null;
+  category?: TransactionCategory | null;
+  asset_class?: AssetClass | null;
+  sector?: Sector | null;
+  fee?: number;
+  tax?: number;
+  realized_gain: number;
   created_at?: string;
 }
 
@@ -61,9 +71,21 @@ export interface CreateTransactionRequest {
   shares: number;
   price: number;
   date: string;
+  notes?: string | null;
+  category?: TransactionCategory | null;
+  asset_class?: AssetClass | null;
+  sector?: Sector | null;
+  fee?: number;
+  tax?: number;
 }
 
 export interface UpdateTransactionRequest extends Partial<CreateTransactionRequest> {}
+
+export interface TransactionImportResult {
+  created: number;
+  skipped: number;
+  errors: string[];
+}
 
 // ---------- Holding ----------
 export interface Holding {
@@ -87,9 +109,15 @@ export interface ComputedHolding {
   unrealized_gain_twd?: number;
   unrealized_pct: number;
   current_price?: number;
+  current_price_twd?: number;
+  day_change?: number;
+  day_change_twd?: number;
   day_change_pct?: number;
   currency?: string;
   exchange?: string;
+  price_source?: string;
+  price_status?: 'live' | 'estimated' | 'missing';
+  price_is_estimated?: boolean;
 }
 
 export interface CreateHoldingRequest {
@@ -105,15 +133,21 @@ export interface UpdateHoldingRequest extends Partial<CreateHoldingRequest> {}
 export interface PortfolioSummary {
   total_value: number;
   total_value_twd?: number;
+  total_value_by_currency?: Record<string, number>;
   total_cost: number;
   total_cost_twd?: number;
+  total_cost_by_currency?: Record<string, number>;
   unrealized_gain: number;
   unrealized_gain_twd?: number;
+  unrealized_gain_by_currency?: Record<string, number>;
   unrealized_pct: number;
   realized_gain: number;
   realized_gain_twd?: number;
+  realized_gain_by_currency?: Record<string, number>;
   realized_pct: number;
   annualized_return: number | null;
+  annualized_return_status?: 'ok' | 'insufficient_data' | 'failed';
+  annualized_return_message?: string | null;
   fx_rate?: number;
   last_updated?: string;
 }
@@ -125,10 +159,43 @@ export interface HistoryPoint {
   value_twd?: number;
 }
 
+export interface PriceRecord {
+  symbol: string;
+  price_date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  currency: string;
+}
+
+export interface PerformancePoint {
+  date: string;
+  value: number;
+  normalized_value: number;
+}
+
+export interface BenchmarkSeries {
+  name: string;
+  symbol: string;
+  market: string;
+  points: PerformancePoint[];
+}
+
+export interface PortfolioPerformance {
+  range: 'today' | 'week' | 'month' | 'year' | 'all';
+  start_date: string;
+  end_date: string;
+  portfolio: PerformancePoint[];
+  benchmarks: BenchmarkSeries[];
+}
+
 // ---------- Version ----------
 export interface VersionInfo {
   version: string;
   last_updated?: string;
+  deployed_at?: string;
 }
 
 // ---------- Admin / Status ----------
@@ -147,13 +214,75 @@ export interface ScraperInfo {
   error_message?: string;
 }
 
+export interface ScraperRunInfo {
+  id: number;
+  timestamp: string;
+  level: string;
+  message: string;
+  symbol?: string | null;
+  job_name: string;
+  trigger: string;
+  target: string;
+  status: 'running' | 'success' | 'warning' | 'error';
+  success_count: number;
+  failure_count: number;
+  records_fetched: number;
+  duration_ms?: number | null;
+  error_reason?: string | null;
+  details?: Record<string, unknown>;
+}
+
+export interface ScraperRuntimeRun {
+  run_id: string;
+  job_name: string;
+  trigger: string;
+  target: string;
+  symbol?: string | null;
+  status: 'running' | 'success' | 'warning' | 'error';
+  started_at: string;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  success_count: number;
+  failure_count: number;
+  records_fetched: number;
+  error_reason?: string | null;
+  details?: Record<string, unknown>;
+}
+
+export interface MissingDataItem {
+  symbol: string;
+  currency: string;
+  region: string;
+  latest_price_date?: string | null;
+  gap_days?: number | null;
+  missing_days: number;
+  history_rows: number;
+  status: 'fresh' | 'stale' | 'missing';
+}
+
 export interface AdminStatus {
   connected: boolean;
   tables: TableInfo[];
   scrapers: ScraperInfo[];
+  price_sources?: Array<{
+    name: string;
+    status: string;
+    last_run?: string | null;
+    records_fetched?: number;
+    message?: string | null;
+  }>;
+  recent_runs?: ScraperRunInfo[];
+  database_size_bytes?: number;
+  database_size_mb?: number;
+  database_path?: string | null;
+  scraper_enabled?: boolean;
+  scraper_running?: boolean;
+  runtime?: ScraperStatus;
+  version?: VersionInfo;
 }
 
 export interface DbStats {
+  total_size_bytes?: number;
   total_size_mb: number;
   table_count: number;
   tables: TableInfo[];
@@ -162,22 +291,52 @@ export interface DbStats {
 }
 
 export interface ScraperStatus {
-  scrapers: ScraperInfo[];
-  next_scheduled_run?: {
-    us_market: string;
-    tw_market: string;
-  };
+  enabled: boolean;
+  running: boolean;
+  active_runs: ScraperRuntimeRun[];
+  recent_runs: ScraperRuntimeRun[];
+  last_error?: string | null;
+  scheduler_started: boolean;
+  timezone: string;
+  next_runs: {
+    id: string;
+    name: string;
+    next_run_time?: string | null;
+    trigger: string;
+  }[];
+}
+
+export interface ScraperRunResponse {
+  id: number;
+  timestamp: string;
+  level: string;
+  message: string;
+  symbol?: string | null;
+  job_name: string;
+  trigger: string;
+  target: string;
+  status: 'running' | 'success' | 'warning' | 'error';
+  success_count: number;
+  failure_count: number;
+  records_fetched: number;
+  duration_ms?: number | null;
+  error_reason?: string | null;
+  details: Record<string, unknown>;
 }
 
 // ---------- Audit Logs ----------
-export type LogType = 'scrape' | 'db_change' | 'api_call' | 'error';
+export type LogType = 'scraper' | 'transaction' | 'auth' | 'admin';
 
 export interface AuditLog {
   id: number;
   type: LogType;
+  raw_type?: string;
   message: string;
   timestamp: string;
   details?: Record<string, unknown>;
+  symbol?: string | null;
+  user_id?: number | null;
+  level?: string | null;
 }
 
 export interface AuditLogResponse {
@@ -186,13 +345,18 @@ export interface AuditLogResponse {
 }
 
 // ---------- Undo Stack ----------
-export interface UndoEntry {
+export interface CreateUndoEntry {
   type: 'create';
   id: number;
 }
 
-// ---------- Dashboard Tab ----------
-export type DashboardTab = 'portfolio' | 'transactions' | 'add';
+export interface DeleteUndoEntry {
+  type: 'delete';
+  transaction: Transaction;
+  expiresAt: number;
+}
+
+export type UndoEntry = CreateUndoEntry | DeleteUndoEntry;
 
 // ---------- API Error ----------
 export interface ApiError {
@@ -201,7 +365,6 @@ export interface ApiError {
 
 // ---------- Form State ----------
 export interface TransactionFormState {
-  account_id: string;
   symbol: string;
   type: TransactionType | '';
   shares: string;

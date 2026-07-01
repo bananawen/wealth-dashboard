@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
@@ -17,20 +17,6 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
-
-
-# DEPRECATED: accounts concept removed — kept for backwards compat only
-class AccountCreate(BaseModel):
-    name: str
-    type: str  # 'brokerage', 'bank', 'crypto'
-    currency: str = "TWD"
-
-
-class AccountOut(BaseModel):
-    id: int
-    name: str
-    type: str
-    created_at: datetime
 
 
 class HoldingCreate(BaseModel):
@@ -63,6 +49,26 @@ class TransactionCreate(BaseModel):
     shares: float
     price: float
     date: date
+    notes: Optional[str] = None
+    category: Optional[str] = None
+    asset_class: Optional[str] = None
+    sector: Optional[str] = None
+    fee: float = 0
+    tax: float = 0
+
+
+class TransactionUpdate(BaseModel):
+    symbol: Optional[str] = None
+    type: Optional[str] = None
+    shares: Optional[float] = None
+    price: Optional[float] = None
+    date: Optional[date] = None
+    notes: Optional[str] = None
+    category: Optional[str] = None
+    asset_class: Optional[str] = None
+    sector: Optional[str] = None
+    fee: Optional[float] = None
+    tax: Optional[float] = None
 
 
 class TransactionOut(BaseModel):
@@ -72,25 +78,64 @@ class TransactionOut(BaseModel):
     shares: float
     price: float
     date: date
+    notes: Optional[str] = None
+    category: Optional[str] = None
+    asset_class: Optional[str] = None
+    sector: Optional[str] = None
+    fee: float = 0
+    tax: float = 0
     realized_gain: float
+
+
+class TransactionImportResult(BaseModel):
+    created: int
+    skipped: int
+    errors: list[str]
 
 
 class PortfolioSummary(BaseModel):
     total_value: float
     total_value_twd: Optional[float] = None
+    total_value_by_currency: dict[str, float] = Field(default_factory=dict)
     total_cost: float
     total_cost_twd: Optional[float] = None
+    total_cost_by_currency: dict[str, float] = Field(default_factory=dict)
     unrealized_gain: float
     unrealized_gain_twd: Optional[float] = None
+    unrealized_gain_by_currency: dict[str, float] = Field(default_factory=dict)
     unrealized_pct: float
     realized_gain: float
     realized_gain_twd: Optional[float] = None
+    realized_gain_by_currency: dict[str, float] = Field(default_factory=dict)
     realized_pct: Optional[float] = None
     annualized_return: Optional[float] = None
+    annualized_return_status: Optional[str] = None
+    annualized_return_message: Optional[str] = None
     day_change: float
     day_change_pct: float
     fx_rate: Optional[float] = None
     last_updated: Optional[str] = None
+
+
+class PerformancePoint(BaseModel):
+    date: str
+    value: float
+    normalized_value: float
+
+
+class BenchmarkSeries(BaseModel):
+    name: str
+    symbol: str
+    market: str
+    points: list[PerformancePoint]
+
+
+class PortfolioPerformance(BaseModel):
+    range: str
+    start_date: str
+    end_date: str
+    portfolio: list[PerformancePoint]
+    benchmarks: list[BenchmarkSeries]
 
 
 class SnapshotCreate(BaseModel):

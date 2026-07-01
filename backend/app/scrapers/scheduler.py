@@ -30,13 +30,13 @@ def _write_audit_log(symbol: str, records: int, status: str, error_msg: str = No
                 details = {"symbol": symbol, "records": records, "market": "US", "date": str(date.today()), "status": "success"}
                 cur.execute("""
                     INSERT INTO audit_log (timestamp, type, level, message, details, symbol)
-                    VALUES (NOW(), 'scrape', 'INFO', %s, %s, %s)
+                    VALUES (NOW(), 'scraper', 'INFO', %s, %s, %s)
                 """, (f"scrape {symbol} success: {records} records", Json(details), symbol))
             else:
                 details = {"symbol": symbol, "market": "US", "date": str(date.today()), "status": "error", "error": error_msg or "unknown"}
                 cur.execute("""
                     INSERT INTO audit_log (timestamp, type, level, message, details, symbol)
-                    VALUES (NOW(), 'scrape', 'ERROR', %s, %s, %s)
+                    VALUES (NOW(), 'scraper', 'ERROR', %s, %s, %s)
                 """, (f"scrape {symbol} ERROR: {error_msg}", Json(details), symbol))
     except Exception as e:
         logger.error(f"Failed to write audit_log for {symbol}: {e}")

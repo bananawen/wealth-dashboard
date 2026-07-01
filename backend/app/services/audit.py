@@ -19,23 +19,34 @@ def write_log(
     Write a record to the audit_log table.
     
     Args:
-        type: 'holdings', 'transaction', 'scraper', 'auth', 'admin'
+        type: 'transaction', 'scraper', 'auth', 'admin'
         level: 'INFO', 'WARNING', 'ERROR', 'DEBUG'
         message: Human-readable description
         details: Optional dict (stored as JSONB)
         symbol: Optional stock symbol
         user_id: Optional user ID
     """
+    normalized_type = {
+        "holdings": "transaction",
+        "db_change": "transaction",
+        "scrape": "scraper",
+        "scraper": "scraper",
+        "api_call": "admin",
+        "error": "admin",
+        "admin": "admin",
+        "auth": "auth",
+        "transaction": "transaction",
+    }.get(type, type)
     try:
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute(
                 """
                 INSERT INTO audit_log (timestamp, type, level, message, details, symbol, user_id)
-                VALUES (NOW(), %s, %s, %s, %s, %s, %s)
+                VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s, %s, %s)
                 """,
                 (
-                    type,
+                    normalized_type,
                     level,
                     message,
                     json.dumps(details) if details else None,
@@ -51,9 +62,19 @@ def write_log(
         logging.getLogger(__name__).error(f"Failed to write audit log: {e}")
 
 
+def log_auth(action: str, message: str, user_id: int = None, details: dict = None):
+    write_log(
+        type="auth",
+        level="INFO",
+        message=message,
+        details={"action": action, **(details or {})},
+        user_id=user_id,
+    )
+
+
 def log_holding_change(action: str, holding_id: int, symbol: str, user_id: int, details: dict = None):
     write_log(
-        type="holdings",
+        type="transaction",
         level="INFO",
         message=f"{action} holding id={holding_id} symbol={symbol}",
         details=details,

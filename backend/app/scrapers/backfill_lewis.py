@@ -192,7 +192,7 @@ def _write_audit(symbol: str, market: str, records: int, start: str, end: str, s
         message = f"爬蟲執行: {market} {symbol} | {records}筆 | {start}~{end} | source={'yfinance' if market=='US' else 'twstock'} | {status}"
         cur.execute("""
             INSERT INTO audit_log (timestamp, type, level, message, details)
-            VALUES (%s, 'scrape', %s, %s, %s)
+            VALUES (%s, 'scraper', %s, %s, %s)
         """, (
             ts,
             "INFO" if status == "SUCCESS" else "ERROR",

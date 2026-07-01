@@ -1,152 +1,83 @@
 """
-Daily portfolio snapshot — writes total_value to portfolio_snapshots.
+Daily portfolio snapshot - writes total_value to portfolio_snapshots.
 Run AFTER scraper has updated price_history tables.
 
 Usage after scraper:
     python -m app.scrapers.snapshot
-
-Or as standalone cron (30min after US scraper):
-    python -m app.scrapers.snapshot us
-    python -m app.scrapers.snapshot tw
 """
-import sys
-sys.path.insert(0, '/home/lewis/wealth/backend')
-
-import argparse
 import json
-import logging
 from datetime import date, datetime, timezone
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from app.config import get_settings
-from app.middleware import log_scraper_event
+
+from app.database import get_db
 from app.logging_config import logger
-
-settings = get_settings()
-
-
-def _conn():
-    return psycopg2.connect(settings.DATABASE_URL, cursor_factory=RealDictCursor)
-
-
-def _write_snapshot(total_value: float, snapshot_date: date, market: str = "ALL"):
-    """Write one snapshot record. Returns id."""
-    conn = _conn()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO portfolio_snapshots (date, total_value)
-        VALUES (%s, %s)
-        ON CONFLICT (date) DO UPDATE SET total_value = EXCLUDED.total_value
-        RETURNING id
-    """, (snapshot_date, total_value))
-    row_id = cur.fetchone()["id"]
-    conn.commit()
-    cur.close()
-    conn.close()
-    return row_id
-
-
-def _get_price_from_db(symbol: str) -> float:
-    """Get latest close price from local price_history tables."""
-    tables = [
-        ("price_history_us", "USD", "US"),
-        ("price_history_tw", "TWD", "TWSE"),
-    ]
-    for table, currency, source in tables:
-        try:
-            conn = _conn()
-            cur = conn.cursor()
-            cur.execute(f"""
-                SELECT close FROM {table}
-                WHERE symbol = %s
-                ORDER BY price_date DESC LIMIT 1
-            """, (symbol,))
-            row = cur.fetchone()
-            cur.close()
-            conn.close()
-            if row:
-                return float(row["close"])
-        except Exception:
-            pass
-    return 0.0
+from app.middleware import log_scraper_event
+from app.services.fx_service import FxService
 
 
 def _get_usd_to_twd() -> float:
-    """Get USD/TWD rate from DB or fallback to yfinance."""
-    # Try DB first
-    with _conn() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT close FROM price_history_us
-            WHERE symbol = 'USDTWD=X'
-            ORDER BY price_date DESC LIMIT 1
-        """)
-        row = cur.fetchone()
-        cur.close()
-        if row:
-            return float(row["close"])
-    # fallback: yfinance live
-    try:
-        import yfinance as yf
-        ticker = yf.Ticker("USDTWD=X")
-        hist = ticker.history(period="5d")
-        if len(hist) > 0:
-            return round(float(hist["Close"].iloc[-1]), 4)
-    except Exception:
-        pass
-    return 32.5  # hard fallback
+    rates = FxService.load_rates()
+    return FxService.get_rate_to_twd_from_rates(rates, "USD")
 
 
-def compute_snapshot() -> dict:
-    """
-    Compute total portfolio value using LOCAL price_history.
-    Returns {total_value, breakdown, date, fx_rate}
-    """
+def _latest_close(conn, symbol: str, currency: str) -> float:
+    table = "price_history_tw" if FxService.normalize_currency(currency) == "TWD" else "price_history_us"
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        SELECT close
+        FROM {table}
+        WHERE symbol = %s
+        ORDER BY price_date DESC
+        LIMIT 1
+        """,
+        (symbol,),
+    )
+    row = cur.fetchone()
+    return float(row["close"]) if row and row["close"] is not None else 0.0
+
+
+def compute_snapshot_for_user(user_id: int) -> dict:
     fx_rate = _get_usd_to_twd()
     breakdown = []
     total_twd = 0.0
 
-    with _conn() as conn:
+    with get_db() as conn:
         cur = conn.cursor()
-
-        # Get holdings grouped by account
-        cur.execute("""
-            SELECT h.account_id, h.symbol, h.shares, h.total_cost,
-                   a.currency
-            FROM holdings h
-            JOIN accounts a ON a.id = h.account_id
-        """)
-
+        cur.execute(
+            """
+            SELECT symbol, shares, total_cost, currency
+            FROM holdings
+            WHERE user_id = %s AND shares > 0
+            ORDER BY symbol
+            """,
+            (user_id,),
+        )
         holdings_rows = cur.fetchall()
-        cur.close()
 
-    for row in holdings_rows:
-        sym = row["symbol"]
-        shares = float(row["shares"])
-        cost_basis = float(row["total_cost"])
-        currency = row["currency"]
-
-        price = _get_price_from_db(sym)
-
-        if currency == "USD":
-            value_twd = price * shares * fx_rate
-            cost_twd = cost_basis * shares * fx_rate
-        else:
-            value_twd = price * shares
-            cost_twd = cost_basis * shares
-
-        total_twd += value_twd
-        breakdown.append({
-            "symbol": sym,
-            "shares": shares,
-            "price": price,
-            "value_twd": round(value_twd, 2),
-            "cost_twd": round(cost_twd, 2),
-            "gain_twd": round(value_twd - cost_twd, 2),
-            "currency": currency,
-        })
+        for row in holdings_rows:
+            symbol = row["symbol"]
+            shares = float(row["shares"])
+            total_cost = float(row["total_cost"])
+            currency = row["currency"] or ("TWD" if symbol.isdigit() else "USD")
+            price = _latest_close(conn, symbol, currency)
+            rate_to_twd = 1.0 if FxService.normalize_currency(currency) == "TWD" else fx_rate
+            value_twd = price * shares * rate_to_twd
+            cost_twd = total_cost * rate_to_twd
+            total_twd += value_twd
+            breakdown.append(
+                {
+                    "symbol": symbol,
+                    "shares": shares,
+                    "price": price,
+                    "value_twd": round(value_twd, 2),
+                    "cost_twd": round(cost_twd, 2),
+                    "gain_twd": round(value_twd - cost_twd, 2),
+                    "currency": currency,
+                }
+            )
 
     return {
+        "user_id": user_id,
         "total_value": round(total_twd, 2),
         "breakdown": breakdown,
         "date": date.today().strftime("%Y-%m-%d"),
@@ -154,84 +85,91 @@ def compute_snapshot() -> dict:
     }
 
 
-def _write_audit(symbols: list, total_value: float, date: str, status: str):
-    """Write audit log entry for snapshot."""
-    try:
-        conn = _conn()
+def _write_snapshot(user_id: int, total_value: float, snapshot_date: date):
+    with get_db() as conn:
         cur = conn.cursor()
-        ts = datetime.now(timezone.utc).isoformat()
-        type_ = "db_change"
-        level = "INFO" if status == "SUCCESS" else "ERROR"
-        message = f"庫存快照: {len(symbols)}筆持倉 | {date} | 總值 NT${total_value:,.2f} | SUCCESS"
-        cur.execute("""
-            INSERT INTO audit_log (timestamp, type, level, message, details)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (
-            ts, type_, level, message,
-            json.dumps({"symbols": symbols, "total_value": total_value,
-                        "date": date, "status": status})
-        ))
-        conn.commit()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        logger.error("Audit log write failed: %s", e)
+        cur.execute(
+            """
+            INSERT INTO portfolio_snapshots (date, total_value, user_id)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, date) DO UPDATE SET total_value = EXCLUDED.total_value
+            RETURNING id
+            """,
+            (snapshot_date, total_value, user_id),
+        )
+        row = cur.fetchone()
+        return row["id"] if row else None
 
 
-def run_snapshot(only_market: str = None) -> dict:
-    """
-    Full snapshot run. Optionally restrict to US/TW market.
-    Returns summary dict.
-    """
+def _write_audit(user_id: int, symbols: list[str], total_value: float, snapshot_date: str, status: str):
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO audit_log (timestamp, type, level, message, details, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    datetime.now(timezone.utc).isoformat(),
+                    "transaction",
+                    "INFO" if status == "SUCCESS" else "ERROR",
+                    f"庫存快照: user={user_id} | {len(symbols)}筆持倉 | {snapshot_date} | 總值 NT${total_value:,.2f} | {status}",
+                    json.dumps(
+                        {
+                            "symbols": symbols,
+                            "total_value": total_value,
+                            "date": snapshot_date,
+                            "status": status,
+                        }
+                    ),
+                    user_id,
+                ),
+            )
+    except Exception as exc:
+        logger.error("Audit log write failed: %s", exc)
+
+
+def run_snapshot() -> dict | None:
     today = date.today()
     logger.info("=" * 60)
-    logger.info("Portfolio snapshot starting | market=%s | date=%s", only_market or "ALL", today)
+    logger.info("Portfolio snapshot starting | date=%s", today)
     logger.info("=" * 60)
 
-    snapshot = compute_snapshot()
-    if not snapshot:
-        logger.error("No snapshot computed — no accounts?")
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT user_id FROM holdings WHERE shares > 0 ORDER BY user_id")
+        user_ids = [int(row["user_id"]) for row in cur.fetchall()]
+
+    if not user_ids:
+        logger.warning("No snapshot computed - no active holdings")
         return None
 
-    symbols = [b["symbol"] for b in snapshot["breakdown"]]
-    total = snapshot["total_value"]
+    snapshots = []
+    for user_id in user_ids:
+        snapshot = compute_snapshot_for_user(user_id)
+        symbols = [item["symbol"] for item in snapshot["breakdown"]]
+        total = snapshot["total_value"]
+        row_id = _write_snapshot(user_id, total, today)
+        logger.info("Snapshot written: id=%s | user=%s | %s | total=NT$%s", row_id, user_id, today, f"{total:,.2f}")
+        _write_audit(user_id, symbols, total, str(today), "SUCCESS")
+        log_scraper_event(
+            "snapshot",
+            "complete",
+            symbols=symbols,
+            total_value=total,
+            date=str(today),
+            fx_rate=snapshot["fx_rate"],
+            records=len(symbols),
+            user_id=user_id,
+        )
+        snapshots.append(snapshot)
 
-    row_id = _write_snapshot(total, today)
+    logger.info("Snapshot complete: %d user snapshots", len(snapshots))
+    return {"date": str(today), "snapshots": snapshots}
 
-    logger.info("Snapshot written: id=%s | %s | total=NT$%s", row_id, today, f"{total:,.2f}")
-    for b in snapshot["breakdown"]:
-        logger.info("  %s: %s shares × price=%s = NT$%s  (gain: %s)",
-                    b["symbol"], f"{b['shares']:,}", b["price"],
-                    f"{b['value_twd']:,.2f}", f"{b['gain_twd']:,.2f}")
-
-    # Write to audit_log
-    _write_audit(symbols, total, str(today), "SUCCESS")
-
-    # Also log as scraper_event for UI visibility
-    log_scraper_event(
-        "snapshot", "complete",
-        symbols=symbols, total_value=total,
-        date=str(today), fx_rate=snapshot["fx_rate"],
-        records=len(symbols)
-    )
-
-    logger.info("Snapshot complete: %d holdings, NT$%s total", len(symbols), f"{total:,.2f}")
-    return snapshot
-
-
-# ── CLI ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Portfolio snapshot after scraper runs")
-    parser.add_argument("market", nargs="?", choices=["us", "tw"],
-                        help="'us' or 'tw' to filter by market, omit for full snapshot")
-    args = parser.parse_args()
-
-    result = run_snapshot(only_market=args.market)
+    result = run_snapshot()
     if result:
-        print(json.dumps({
-            "date": result["date"],
-            "total_value": result["total_value"],
-            "fx_rate": result["fx_rate"],
-            "holdings": result["breakdown"],
-        }, indent=2, ensure_ascii=False))
+        print(json.dumps(result, indent=2, ensure_ascii=False))

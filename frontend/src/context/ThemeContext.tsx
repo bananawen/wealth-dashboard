@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { toggleTheme, selectTheme, selectIsDark } from '../store/themeSlice';
+import { toggleTheme as toggleThemeAction, selectTheme, selectIsDark } from '../store/themeSlice';
 import type { ThemeContextValue } from '../types';
 import type { AppDispatch } from '../store';
 
@@ -13,7 +13,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const handleToggleTheme = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    dispatch(toggleTheme() as any);
+    dispatch(toggleThemeAction() as any);
   }, [dispatch]);
 
   useEffect(() => {
@@ -36,6 +36,8 @@ export function useTheme(): ThemeContextValue {
   const theme = useSelector(selectTheme);
   const isDark = useSelector(selectIsDark);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const toggleTheme = useCallback(() => { dispatch(toggleTheme() as unknown as any); }, [dispatch]);
-  return { theme, toggleTheme, isDark };
+  const handleToggleTheme = useCallback(() => {
+    dispatch(toggleThemeAction() as unknown as any);
+  }, [dispatch]);
+  return { theme, toggleTheme: handleToggleTheme, isDark };
 }

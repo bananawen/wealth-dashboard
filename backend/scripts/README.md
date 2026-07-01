@@ -89,3 +89,46 @@ python -m app.scrapers.backfill
 ```
 
 **注意：** 目前 `upsert_records` 已有實作（寫入 DB），並非只是 fetch 不寫入。
+
+---
+
+## asset_class_backfill.py
+
+用於一次性補齊 `transactions.asset_class` 缺值，將既有交易分到 `股票 / 債券 / 貴金屬 / 現金 / 其他`。
+
+**何時使用：**
+- 已經新增 `asset_class` 欄位，但舊交易資料尚未補值
+- 想先用保守規則做預覽，再決定是否實際寫入
+
+**執行方式：**
+```bash
+cd /home/lewis/wealth/backend
+venv/bin/python scripts/asset_class_backfill.py
+venv/bin/python scripts/asset_class_backfill.py --apply
+```
+
+**注意：**
+- 預設是 dry-run，只會列出預計回填結果，不會寫入資料庫。
+- 規則偏保守：已知分類放在 `scripts/asset_class_symbol_map.py`；不確定的 ETF 或台灣代號先歸 `other`，避免誤判。
+
+---
+
+## sector_backfill.py
+
+用於一次性補齊 `transactions.sector` 缺值，採用「股票個股產業 + ETF 類型標籤」的保守回填規則。
+
+**何時使用：**
+- 已經新增 `sector` 欄位，但舊交易資料尚未補值
+- 想只補高把握標的，其餘先保留空白
+
+**執行方式：**
+```bash
+cd /home/lewis/wealth/backend
+venv/bin/python scripts/sector_backfill.py
+venv/bin/python scripts/sector_backfill.py --apply
+```
+
+**注意：**
+- 預設是 dry-run，只會列出預計回填結果，不會寫入資料庫。
+- 規則對照表在 `scripts/sector_symbol_map.py`。
+- 非 `equity` 的交易不會補 sector；不確定的台灣 ETF 也會先保留空白，不強制塞 `other`。

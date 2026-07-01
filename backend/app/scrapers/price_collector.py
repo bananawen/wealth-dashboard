@@ -10,23 +10,73 @@ from datetime import date, timedelta
 from typing import Optional
 
 import yfinance as yf
-from psycopg2.extras import Json
 
 from app.database import get_db
+from app.services.market_service import MarketService
 from app.services.audit import write_log
 from app.logging_config import logger
 
-# Known OTC stocks (上櫃) that need .TWO suffix
-OTC_STOCKS = {"00887"}
-
-
 def _get_exchange(symbol: str) -> str:
-    """Return exchange for a symbol: TWSE (上市), OTC (上櫃), US, etc."""
-    if symbol in OTC_STOCKS:
-        return "OTC"
-    if symbol.isdigit():
-        return "TWSE"
-    return "US"
+    """Return exchange using DB-backed stock_info rules."""
+    with get_db() as conn:
+        profile = MarketService.ensure_symbol_profile(conn, symbol.upper())
+    return profile.exchange
+
+
+def _classify_fetch_error(exc: Exception) -> str:
+    message = str(exc).lower()
+    if "timed out" in message or "timeout" in message:
+        return "timeout"
+    if "too many requests" in message or "rate limit" in message or "429" in message:
+        return "rate_limit"
+    if "dns" in message or "name or service not known" in message or "connection" in message:
+        return "network"
+    if "not found" in message or "no data" in message or "empty" in message:
+        return "no_data"
+    return "unknown"
+
+
+def _fetch_history_with_retry(
+    yf_symbol: str,
+    start_date: date,
+    end_date: date,
+    attempts: int = 3,
+    timeout: int = 15,
+):
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            ticker = yf.Ticker(yf_symbol)
+            request_end = end_date + timedelta(days=1)
+            return ticker.history(
+                start=start_date.isoformat(),
+                end=request_end.isoformat(),
+                timeout=timeout,
+            ), None
+        except Exception as exc:
+            last_error = exc
+            kind = _classify_fetch_error(exc)
+            logger.warning(
+                f"[{yf_symbol}] history fetch attempt {attempt}/{attempts} failed: {kind} - {exc}"
+            )
+            if attempt < attempts and kind in {"timeout", "network", "rate_limit"}:
+                time.sleep(min(2 * attempt, 5))
+                continue
+            return None, {
+                "kind": kind,
+                "message": str(exc),
+                "attempts": attempt,
+                "symbol": yf_symbol,
+            }
+
+    if last_error is not None:
+        return None, {
+            "kind": _classify_fetch_error(last_error),
+            "message": str(last_error),
+            "attempts": attempts,
+            "symbol": yf_symbol,
+        }
+    return None, None
 
 
 # ─── price fetch (reused from holdings.py) ───────────────────────────────────
@@ -95,27 +145,6 @@ def _get_price_impl(symbol: str, avg_cost: float = 0.0) -> tuple[float, float, s
     return 0.0, 0.0, exchange
 
 
-# ─── three-layer TW symbol resolution ─────────────────────────────────────────
-
-def _try_tw_symbol(symbol: str) -> Optional[str]:
-    """
-    Try .TW first, then .TWO, return the working suffix or None.
-    Three-layer search: 上市(.TW) → 上櫃(.TWO) → 興櫃 (bare symbol for emerging).
-    For emerging (興櫃), yfinance uses the bare symbol.
-    """
-    for suffix in (".TW", ".TWO", ""):
-        try:
-            full = f"{symbol}{suffix}" if suffix else symbol
-            ticker = yf.Ticker(full)
-            hist = ticker.history(period="5d")
-            if hist is not None and not hist.empty and float(hist["Close"].iloc[-1]) > 0:
-                return suffix
-        except Exception:
-            pass
-        time.sleep(0.2)
-    return None
-
-
 # ─── upsert helpers ───────────────────────────────────────────────────────────
 
 def _fetch_and_upsert(
@@ -123,66 +152,90 @@ def _fetch_and_upsert(
     region: str,
     start_date: date,
     end_date: date,
-) -> tuple[int, Optional[str]]:
+) -> tuple[int, Optional[dict]]:
     """
     Fetch historical data from yfinance and UPSERT into price_history_tw or price_history_us.
     Returns (inserted_count, error_msg or None).
     """
-    table = "price_history_tw" if region == "TW" else "price_history_us"
-    currency = "TWD" if region == "TW" else "USD"
+    with get_db() as conn:
+        profile = MarketService.ensure_symbol_profile(conn, symbol.upper())
+    normalized_symbol = profile.symbol
+    if profile.history_region != region:
+        profile = MarketService.profile_from_exchange(normalized_symbol, "US" if region == "US" else "TWSE")
+        normalized_symbol = profile.symbol
 
-    # Resolve TW symbol suffix
-    yf_symbol = symbol
-    if region == "TW":
-        suffix = _try_tw_symbol(symbol)
-        if suffix is None:
-            return 0, f"Could not resolve TW symbol {symbol} in any layer (.TW/.TWO/bare)"
-        yf_symbol = f"{symbol}{suffix}" if suffix else symbol
-        logger.info(f"[{symbol}] resolved to yfinance symbol {yf_symbol}")
+    table = profile.history_table
+    currency = profile.currency
+    yf_symbol = profile.yahoo_symbol
+    source = profile.history_source
+    logger.info(f"[{normalized_symbol}] resolved to market={profile.exchange} yfinance symbol {yf_symbol}")
 
     try:
-        ticker = yf.Ticker(yf_symbol)
-        hist = ticker.history(start=start_date.isoformat(), end=end_date.isoformat())
+        hist, fetch_error = _fetch_history_with_retry(yf_symbol, start_date, end_date)
+        if fetch_error is not None:
+            return 0, {
+                "kind": fetch_error.get("kind", "unknown"),
+                "message": fetch_error.get("message"),
+                "attempts": fetch_error.get("attempts", 1),
+                "symbol": normalized_symbol,
+                "yf_symbol": yf_symbol,
+                "region": region,
+            }
 
         if hist is None or hist.empty:
-            return 0, None  # empty is not an error, just no data
+            return 0, {
+                "kind": "no_data",
+                "message": "history returned no rows",
+                "attempts": 1,
+                "symbol": normalized_symbol,
+                "yf_symbol": yf_symbol,
+                "region": region,
+            }
 
         count = 0
         with get_db() as conn:
             cur = conn.cursor()
             for idx, row in hist.iterrows():
                 price_date = idx.strftime("%Y-%m-%d")
-                rec = {
-                    "symbol": symbol.upper(),
-                    "date": price_date,
-                    "open": round(float(row["Open"]), 2),
-                    "high": round(float(row["High"]), 2),
-                    "low": round(float(row["Low"]), 2),
-                    "close": round(float(row["Close"]), 2),
-                    "volume": int(row["Volume"]),
-                    "currency": currency,
-                    "source": region,
-                }
                 cur.execute(f"""
                     INSERT INTO {table} (symbol, price_date, open, high, low, close, volume, currency, source, created_at)
-                    VALUES (%(symbol)s, %(date)s, %(open)s, %(high)s, %(low)s, %(close)s, %(volume)s, %(currency)s, %(source)s, NOW())
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                     ON CONFLICT (symbol, price_date) DO UPDATE SET
                         open = EXCLUDED.open,
                         high = EXCLUDED.high,
                         low = EXCLUDED.low,
                         close = EXCLUDED.close,
                         volume = EXCLUDED.volume,
+                        source = EXCLUDED.source,
                         created_at = NOW()
-                """, rec)
+                """, (
+                    normalized_symbol,
+                    price_date,
+                    round(float(row["Open"]), 2),
+                    round(float(row["High"]), 2),
+                    round(float(row["Low"]), 2),
+                    round(float(row["Close"]), 2),
+                    int(row["Volume"]),
+                    currency,
+                    source,
+                ))
                 count += 1
             cur.close()
 
-        logger.info(f"[{symbol}] upserted {count} records into {table}")
+        logger.info(f"[{normalized_symbol}] upserted {count} records into {table}")
         return count, None
 
     except Exception as e:
-        logger.error(f"[{symbol}] _fetch_and_upsert failed: {e}")
-        return 0, str(e)
+        error_kind = _classify_fetch_error(e)
+        logger.error(f"[{normalized_symbol}] _fetch_and_upsert failed: {error_kind} - {e}")
+        return 0, {
+            "kind": error_kind,
+            "message": str(e),
+            "attempts": 1,
+            "symbol": normalized_symbol,
+            "yf_symbol": yf_symbol,
+            "region": region,
+        }
 
 
 # ─── gap detection ────────────────────────────────────────────────────────────
@@ -236,17 +289,18 @@ def _discover_new_symbols() -> list[tuple[str, str]]:
 
             # Get all symbols that have at least one transaction
             cur.execute("""
-                SELECT DISTINCT t.symbol, a.currency
-                FROM transactions t
-                JOIN accounts a ON a.id = t.account_id
-                ORDER BY t.symbol
+                SELECT DISTINCT symbol, COALESCE(currency, '') AS currency
+                FROM transactions
+                ORDER BY symbol
             """)
             tx_rows = cur.fetchall()
             cur.close()
 
         for row in tx_rows:
             symbol = row["symbol"]
-            currency = row["currency"]
+            currency = str(row["currency"] or "").upper()
+            if currency not in {"USD", "TWD"}:
+                currency = "TWD" if symbol.isdigit() else "USD"
 
             if currency == "USD":
                 region = "US"

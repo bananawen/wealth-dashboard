@@ -4,17 +4,21 @@
 
 /* Hermes-style theme variables */
 :root {
-  /* Light mode */
-  --bg-primary: #FFFFFF;
-  --bg-secondary: #F9FAFB;
-  --bg-tertiary: #F3F4F6;
-  --text-primary: #111827;
-  --text-secondary: #6B7280;
-  --text-muted: #9CA3AF;
-  --border-color: #E5E7EB;
+  /* Light mode - warm gray white */
+  --bg-primary: #F5F3EF;
+  --bg-secondary: #E9E4DB;
+  --bg-tertiary: #DDD6CB;
+  --text-primary: #1F2937;
+  --text-secondary: #5B6472;
+  --text-muted: #88919E;
+  --border-color: #CFC7BC;
   --accent: #3B82F6;
   --accent-hover: #2563EB;
-  --card-bg: #FFFFFF;
+  --card-bg: #FCFAF6;
+  --panel-bg: rgba(252, 249, 244, 0.72);
+  --input-bg: rgba(255, 255, 255, 0.72);
+  --card-shadow: 0 1px 2px rgba(69, 54, 33, 0.06), 0 10px 24px rgba(69, 54, 33, 0.05);
+  --card-shadow-hover: 0 8px 18px rgba(69, 54, 33, 0.09), 0 18px 40px rgba(69, 54, 33, 0.08);
   --success: #10B981;
   --warning: #F59E0B;
   --error: #EF4444;
@@ -26,15 +30,19 @@
 /* Dark mode */
 .dark {
   --bg-primary: #0F172A;
-  --bg-secondary: #1E293B;
-  --bg-tertiary: #334155;
+  --bg-secondary: #162235;
+  --bg-tertiary: #22324A;
   --text-primary: #F9FAFB;
-  --text-secondary: #CBD5E1;
-  --text-muted: #94A3B8;
-  --border-color: #334155;
+  --text-secondary: #D5DEEA;
+  --text-muted: #8EA0B8;
+  --border-color: #3A4B68;
   --accent: #3B82F6;
   --accent-hover: #60A5FA;
-  --card-bg: #1E293B;
+  --card-bg: #1B2940;
+  --panel-bg: rgba(30, 41, 59, 0.78);
+  --input-bg: rgba(22, 34, 53, 0.92);
+  --card-shadow: 0 1px 2px rgba(2, 6, 23, 0.32), 0 14px 36px rgba(2, 6, 23, 0.34);
+  --card-shadow-hover: 0 10px 26px rgba(2, 6, 23, 0.4), 0 22px 52px rgba(2, 6, 23, 0.42);
   --success: #34D399;
   --warning: #FBBF24;
   --error: #F87171;
@@ -45,6 +53,14 @@
 
 * {
   -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 html {
@@ -58,8 +74,6 @@ body {
   /* Apply safe-area to body so white bars disappear */
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
   min-height: 100vh;
   min-height: 100dvh;
   /* Body background fills safe-area regions - prevents white bars */
@@ -67,8 +81,18 @@ body {
 }
 
 #root {
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
 }
 
 /* Safe area insets for mobile - utility classes */
@@ -93,11 +117,12 @@ body {
     @apply rounded-xl border transition-all duration-200;
     background-color: var(--card-bg);
     border-color: var(--border-color);
+    box-shadow: var(--card-shadow);
   }
 
   .card-hover:hover {
-    @apply shadow-card-hover;
     border-color: var(--accent);
+    box-shadow: var(--card-shadow-hover);
   }
 
   .btn-primary {
@@ -124,9 +149,10 @@ body {
 
   .input-field {
     @apply w-full px-4 py-2 rounded-lg border transition-colors duration-200;
-    background-color: var(--bg-secondary);
+    background-color: var(--input-bg);
     border-color: var(--border-color);
     color: var(--text-primary);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .input-field:focus {
@@ -156,6 +182,52 @@ body {
   .badge-error {
     background-color: rgba(239, 68, 68, 0.1);
     color: var(--error);
+  }
+
+  .state-panel {
+    @apply rounded-xl border px-4 py-6 text-center;
+    background-color: var(--panel-bg);
+    border-color: var(--border-color);
+    box-shadow: var(--card-shadow);
+  }
+
+  .state-title {
+    @apply text-sm font-semibold;
+    color: var(--text-primary);
+  }
+
+  .state-copy {
+    @apply mt-1 text-xs sm:text-sm;
+    color: var(--text-secondary);
+  }
+
+  .state-action {
+    @apply mt-3 flex items-center justify-center gap-2 flex-wrap;
+  }
+
+  .badge-info {
+    background-color: rgba(59, 130, 246, 0.1);
+    color: var(--info);
+  }
+
+  .badge-loading {
+    background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+  }
+
+  .badge-neutral {
+    background-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
+    color: var(--text-secondary);
+  }
+
+  .badge-stale {
+    background-color: color-mix(in srgb, var(--warning) 12%, transparent);
+    color: var(--warning);
+  }
+
+  .badge-estimated {
+    background-color: color-mix(in srgb, var(--warning) 12%, transparent);
+    color: var(--warning);
   }
 }
 

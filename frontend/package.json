@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "umask 022; vite build; find dist -type d -exec chmod 755 {} +; find dist -type f -exec chmod 644 {} +",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",

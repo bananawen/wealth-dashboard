@@ -1,5 +1,9 @@
 # 資料庫遷移腳本
 
+> [!WARNING]
+> 本文件主要描述 **歷史 PostgreSQL / transitional migration 脈絡**。目前 2026-06-28 的 active runtime 已是 accountless SQLite schema，實際運行請以 `backend/app/database.py` 與 `backend/wealth.db` 為準。
+> 文件中提到的 `accounts`、`account_id`、`portfolio_id` 與部分 PostgreSQL-only 步驟，應視為歷史背景，而不是現在要直接套用的操作指南。
+
 所有 `.sql` 檔案需按數字前綴順序執行。PostgreSQL `IF NOT EXISTS` 和 `CREATE INDEX IF NOT EXISTS` 確保 idempotent。
 
 ---
@@ -14,6 +18,7 @@
 018_holdings_denormalized.sql   → 建立 holdings 表 + sync_holdings_after_transaction 函式 + 回填
 019_add_symbol_to_transactions.sql → transactions 新增 symbol 欄位 + 回填 + holdings 重建
 020_fix_portfolio_id_nullable.sql → transactions.portfolio_id 改為 nullable + 新增 realized_gain
+021_accountless_transactions_holdings.sql → 對齊 account-less 交易寫入與 holdings projection schema
 ```
 
 > 注意：中間跳過了 `003`–`013`，表示這些編號的 migration 從未建立或已廢棄。
@@ -123,6 +128,24 @@
 
 ---
 
+## 021_accountless_transactions_holdings.sql
+
+**用途：** 將資料庫 schema 對齊目前後端架構：`transactions` 是唯一公開寫入來源，`holdings` 是後端維護的投影表。
+
+**內容：**
+1. `transactions` 新增並填補 `currency` 欄位，改為 NOT NULL
+2. `transactions.account_id` 改為 nullable，支援已移除 accounts 的前端流程
+3. `holdings` 補齊 `user_id`, `currency`, `total_cost_twd`
+4. `holdings.account_id` 改為 nullable
+5. 移除舊的 `block_holdings_write` trigger，讓後端 projection service 可以寫入 holdings
+6. 新增 `holdings_user_symbol_key UNIQUE (user_id, symbol)`，對齊 Python upsert
+
+**注意事項：**
+- Public API 已在 Python 層禁止 `POST/PUT/DELETE /holdings`，因此移除 DB blanket trigger 不會重新開放使用者直接改 holdings。
+- 若既有 DB 已有同一 user 下重複 symbol 的 holdings，新增 unique constraint 前需先人工合併。
+
+---
+
 ## 執行建議
 
 ```bash
@@ -134,6 +157,7 @@ psql "$DATABASE_URL" -f 017_price_history_us.sql
 psql "$DATABASE_URL" -f 018_holdings_denormalized.sql
 psql "$DATABASE_URL" -f 019_add_symbol_to_transactions.sql
 psql "$DATABASE_URL" -f 020_fix_portfolio_id_nullable.sql
+psql "$DATABASE_URL" -f 021_accountless_transactions_holdings.sql
 ```
 
 或確認 PostgreSQL 已有的 `app/scrapers/backfill_lewis.py` 之類的 Migration 機制後再執行。

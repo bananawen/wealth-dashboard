@@ -1,10 +1,4 @@
-// Vitest test setup
-import { cleanup } from '@testing-library/react'
-
-// Cleanup after each test - vitest provides afterEach globally
-afterEach(() => {
-  cleanup()
-})
+import { vi } from 'vitest'
 
 // Mock localStorage
 const localStorageMock = {
@@ -17,3 +11,17 @@ global.localStorage = localStorageMock
 
 // Mock fetch
 global.fetch = vi.fn()
+
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation((query) => ({
+    matches: query === '(prefers-color-scheme: dark)',
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+})

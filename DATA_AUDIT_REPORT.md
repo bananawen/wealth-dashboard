@@ -1,9 +1,13 @@
 # 個人財富管理網站 數據正確性稽核報告
 
+> [!WARNING]
+> 本文件是 **2026-06-06 的歷史稽核快照**。其中提到的 PostgreSQL、`accounts`、`account_id`、`stock_info` 與舊 `user_id` 狀態，**不代表 2026-06-28 之後的目前架構**。
+> 目前 active runtime 請以 `backend/wealth.db`、`AUTH_MODEL.md`、`SINGLE_USER_SCHEMA_AUDIT_2026-06-28.md` 為準。
+
 > **稽核日期：**2026-06-06  
 > **稽核對象：** `/home/lewis/wealth`（FastAPI + React + PostgreSQL）  
 > **稽核帳號：** bananawen（user_id = 5）  
-> **稽核方式：** 靜態程式碼審查 + 資料庫直接查詢 + API 呼叫驗證（未修改任何檔案）
+> **稽核方式：** 靜態程式碼審查 + 當時資料庫直接查詢 + API 呼叫驗證（未修改任何檔案）
 
 ---
 
