@@ -24,6 +24,18 @@ function publishDistPermissions() {
 
 export default defineConfig({
   plugins: [react(), publishDistPermissions()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('recharts')) return 'vendor-charts'
+          if (id.includes('lucide-react')) return 'vendor-icons'
+          return 'vendor'
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 3000,

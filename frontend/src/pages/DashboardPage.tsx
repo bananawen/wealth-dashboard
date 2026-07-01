@@ -1,16 +1,18 @@
+import { Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
-import AddTransactionForm from '../components/AddTransactionForm';
 import DashboardLayout from '../components/DashboardLayout';
 import ConfirmDialog from '../components/ConfirmDialog';
 import InlineNotice from '../components/InlineNotice';
 import DashboardStatCard from '../components/dashboard/DashboardStatCard';
-import HoldingsSection from '../components/dashboard/HoldingsSection';
-import OverviewPerformanceSection from '../components/dashboard/OverviewPerformanceSection';
-import TransactionsSection from '../components/dashboard/TransactionsSection';
-import { DataTimestamp } from '../components/UIState';
+import { DataTimestamp, LoadingState } from '../components/UIState';
 import { formatCurrencyBreakdown, formatPct, formatShares, formatTWD } from '../components/dashboard/shared';
 import { useDashboardState } from '../hooks/useDashboardState';
 import type { DashboardView } from '../types/dashboard';
+
+const OverviewPerformanceSection = lazy(() => import('../components/dashboard/OverviewPerformanceSection'));
+const HoldingsSection = lazy(() => import('../components/dashboard/HoldingsSection'));
+const TransactionsSection = lazy(() => import('../components/dashboard/TransactionsSection'));
+const AddTransactionForm = lazy(() => import('../components/AddTransactionForm'));
 
 interface DashboardPageProps {
   view?: DashboardView;
@@ -164,58 +166,82 @@ export default function DashboardPage({ view = 'overview' }: DashboardPageProps)
         )}
 
         {view === 'holdings' && (
-          <HoldingsSection
-            computedHoldings={computedHoldings}
-            holdingsForDisplay={holdingsForDisplay}
-            holdingsSortDirection={holdingsSortDirection}
-            holdingsSortKey={holdingsSortKey}
-            activeHoldingsSortLabel={activeHoldingsSortLabel}
-            selectedSymbol={selectedSymbol}
-            setSelectedSymbol={setSelectedSymbol}
-            summaryFxRate={summary?.fx_rate ?? 1}
-            toggleHoldingsSort={toggleHoldingsSort}
-            transactions={transactions}
-          />
+          <Suspense
+            fallback={(
+              <div className="card p-3 sm:p-6">
+                <LoadingState title="載入持倉分析" description="正在準備配置與持倉圖表。" />
+              </div>
+            )}
+          >
+            <HoldingsSection
+              computedHoldings={computedHoldings}
+              holdingsForDisplay={holdingsForDisplay}
+              holdingsSortDirection={holdingsSortDirection}
+              holdingsSortKey={holdingsSortKey}
+              activeHoldingsSortLabel={activeHoldingsSortLabel}
+              selectedSymbol={selectedSymbol}
+              setSelectedSymbol={setSelectedSymbol}
+              summaryFxRate={summary?.fx_rate ?? 1}
+              toggleHoldingsSort={toggleHoldingsSort}
+              transactions={transactions}
+            />
+          </Suspense>
         )}
 
         {view === 'overview' ? (
-          <OverviewPerformanceSection
-            benchmarkSeries={benchmarkSeries}
-            hasSummaryValue={Boolean(summary && summary.total_value_twd > 0)}
-            performanceChartData={performanceChartData}
-            performanceRange={performanceRange}
-            setPerformanceRange={setPerformanceRange}
-          />
+          <Suspense
+            fallback={(
+              <div className="card p-3 sm:p-6">
+                <LoadingState title="載入資產走勢" description="正在準備圖表模組。" />
+              </div>
+            )}
+          >
+            <OverviewPerformanceSection
+              benchmarkSeries={benchmarkSeries}
+              hasSummaryValue={Boolean(summary && summary.total_value_twd > 0)}
+              performanceChartData={performanceChartData}
+              performanceRange={performanceRange}
+              setPerformanceRange={setPerformanceRange}
+            />
+          </Suspense>
         ) : null}
 
         {view === 'transactions' && (
-          <TransactionsSection
-            availableUndoStack={availableUndoStack}
-            clearEditTransaction={clearEditTransaction}
-            clearTransactionFilters={clearTransactionFilters}
-            currentHoldingSymbols={computedHoldings.filter((holding) => Number(holding.shares) > 0).map((holding) => holding.symbol)}
-            handleEdit={handleEdit}
-            handleUndoLast={handleUndoLast}
-            lastUndoEntry={lastUndoEntry}
-            lossTransactionCount={lossTransactionCount}
-            navigateToNew={() => navigate('/transactions/new')}
-            profitTransactionCount={profitTransactionCount}
-            requestDeleteTransaction={requestDeleteTransaction}
-            setTxCategoryFilter={setTxCategoryFilter}
-            setTxFromDate={setTxFromDate}
-            setTxGainFilter={setTxGainFilter}
-            setTxQuery={setTxQuery}
-            setTxToDate={setTxToDate}
-            setTxTypeFilter={setTxTypeFilter}
-            transactions={transactions}
-            txCategoryFilter={txCategoryFilter}
-            txFromDate={txFromDate}
-            txGainFilter={txGainFilter}
-            txQuery={txQuery}
-            txToDate={txToDate}
-            txTypeFilter={txTypeFilter}
-            visibleTransactions={visibleTransactions}
-          />
+          <Suspense
+            fallback={(
+              <div className="card p-3 sm:p-6">
+                <LoadingState title="載入交易工作區" description="正在準備篩選與交易清單。" />
+              </div>
+            )}
+          >
+            <TransactionsSection
+              availableUndoStack={availableUndoStack}
+              clearEditTransaction={clearEditTransaction}
+              clearTransactionFilters={clearTransactionFilters}
+              currentHoldingSymbols={computedHoldings.filter((holding) => Number(holding.shares) > 0).map((holding) => holding.symbol)}
+              handleEdit={handleEdit}
+              handleUndoLast={handleUndoLast}
+              lastUndoEntry={lastUndoEntry}
+              lossTransactionCount={lossTransactionCount}
+              navigateToNew={() => navigate('/transactions/new')}
+              profitTransactionCount={profitTransactionCount}
+              requestDeleteTransaction={requestDeleteTransaction}
+              setTxCategoryFilter={setTxCategoryFilter}
+              setTxFromDate={setTxFromDate}
+              setTxGainFilter={setTxGainFilter}
+              setTxQuery={setTxQuery}
+              setTxToDate={setTxToDate}
+              setTxTypeFilter={setTxTypeFilter}
+              transactions={transactions}
+              txCategoryFilter={txCategoryFilter}
+              txFromDate={txFromDate}
+              txGainFilter={txGainFilter}
+              txQuery={txQuery}
+              txToDate={txToDate}
+              txTypeFilter={txTypeFilter}
+              visibleTransactions={visibleTransactions}
+            />
+          </Suspense>
         )}
 
         <ConfirmDialog
@@ -243,14 +269,22 @@ export default function DashboardPage({ view = 'overview' }: DashboardPageProps)
 
         {/* Add Transaction Form */}
         {view === 'add' && (
-          <AddTransactionForm
-            onSuccess={() => {}}
-            onCancel={() => { clearEditTransaction(); navigate('/transactions'); }}
-            transactions={transactions}
-            editTransaction={editTransaction ?? undefined}
-            onEditComplete={clearEditTransaction}
-            onCreated={handleCreated}
-          />
+          <Suspense
+            fallback={(
+              <div className="card p-3 sm:p-6">
+                <LoadingState title="載入交易表單" description="正在準備輸入與匯入模組。" />
+              </div>
+            )}
+          >
+            <AddTransactionForm
+              onSuccess={() => {}}
+              onCancel={() => { clearEditTransaction(); navigate('/transactions'); }}
+              transactions={transactions}
+              editTransaction={editTransaction ?? undefined}
+              onEditComplete={clearEditTransaction}
+              onCreated={handleCreated}
+            />
+          </Suspense>
         )}
     </DashboardLayout>
   );

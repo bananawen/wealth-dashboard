@@ -156,6 +156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `deploy/README.md` with frontend build, backend systemd, Nginx site, verification, and rollback commands.
 - Added `AUTH_MODEL.md` to document the single-user deployment model, owner account rule, and system-management access boundary.
 - Added `SINGLE_USER_SCHEMA_AUDIT_2026-06-28.md` to classify which multi-user-era schema pieces are still active, legacy, or priority cleanup targets.
+- Added `CURRENT_STATE_RUNBOOK.md` as the current operational entrypoint for deployment, schema, auth, and verification steps.
 - Added Audit Log quick date filters for `今天`, `7 天`, `30 天`, and `全部`.
 - Added Audit Log clear-filter action and current date range summary.
 - Added Dashboard logout action that clears the local token and returns to `/login`.
@@ -191,6 +192,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clarified the app as a single-user deployment: `admin` only gates system-management tools for the owner account, not separate user personas.
 - Updated deployment notes to state the single-user assumption and how to verify the owner account role in SQLite.
 - Corrected the canonical SQLite verification path in `deploy/README.md` from the repo-root `wealth.db` copy to the active `backend/wealth.db`.
+- Optimized frontend loading by switching route pages to `React.lazy`/`Suspense` and splitting Vite output into dedicated vendor chunks for charts and icons plus a shared vendor chunk.
 - Changed Dashboard section switching from local tab state to URL-based navigation.
 - Changed `/` to redirect to `/overview` for a clearer default landing page.
 - Changed `App.tsx` routing to point at dedicated page components instead of binding every route directly to `DashboardPage`.

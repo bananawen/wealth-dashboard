@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import themeReducer from '../store/themeSlice';
 import { ThemeProvider, useTheme } from './ThemeContext';
 
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 function TestButton() {
   const { isDark, toggleTheme } = useTheme();
   return (
@@ -29,7 +31,9 @@ describe('ThemeContext', () => {
   });
 
   afterEach(() => {
-    root?.unmount();
+    act(() => {
+      root?.unmount();
+    });
     container.remove();
     document.documentElement.className = '';
   });
