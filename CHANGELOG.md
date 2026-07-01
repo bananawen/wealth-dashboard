@@ -57,6 +57,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 2026-07-01
 
 ### Added
+- Added root `README.md` as the project entry document covering the current single-user SQLite architecture, technical stack, major features, usage, deployment context, and maintenance recommendations.
+
+### Changed
+- Changed documentation entry guidance so repo readers can start from `README.md` and then drill down to `CURRENT_STATE_RUNBOOK.md`, `AUTH_MODEL.md`, and `deploy/README.md` for operational details.
+
+### Fixed
+- Fixed the lack of a root-level onboarding document, which previously forced maintainers to infer the current architecture from scattered Markdown files and source code.
+
+### Risk And Rollback
+- Roll back by removing or rewriting `README.md` if the documented scope or assumptions change; no runtime code path is affected.
+
+### Next
+- Keep `README.md` aligned with the real mounted routes, active SQLite schema, and deployment topology whenever architecture or operations change.
+
+## 2026-07-01
+
+### Added
 - Added `frontend/src/context/ThemeContext.test.tsx` to verify the theme menu can switch from dark to light without recursive failure.
 
 ### Changed
