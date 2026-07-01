@@ -27,6 +27,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iPhone/iPad responsive layout issues.
 - Theme persistence across sessions.
 
+## Change Log
+
+日期：2026-07-01
+
+修改內容：
+- 新增：
+  - 新增 `frontend/src/components/dashboard/shared.test.ts`，覆蓋損益正負號 formatter 規則。
+- 修改：
+  - 修改 `frontend/src/components/dashboard/shared.ts`，新增 `formatSignedTWD()` 與 `formatSignedByCurrency()` 共用 formatter。
+  - 修改 `frontend/src/pages/DashboardPage.tsx`，讓總覽卡片中的已實現與未實現損益固定顯示正負號。
+  - 修改 `frontend/src/components/dashboard/HoldingsSection.tsx`，統一持倉群組、持倉清單、單一標的明細與損益百分比的 sign 顯示。
+  - 修改 `frontend/src/components/dashboard/TransactionsSection.tsx`，統一交易分類摘要與單筆交易已實現損益的 sign 顯示。
+- 刪除：
+  - 無
+
+修改原因：
+
+- 先前損益顯示規則分散在多個元件內，部分位置手動補 `+`、部分位置未補，造成同一個網站內的損益格式不一致。
+
+影響範圍：
+
+- 前端 Dashboard `/overview`、`/holdings`、`/transactions` 的損益金額與百分比顯示格式。
+
+下一步：
+
+- 進一步把金額 formatter 與欄位樣式收斂到更少的 UI helper，降低後續再出現格式漂移的機率。
+
 ## 2026-07-01
 
 ### Added

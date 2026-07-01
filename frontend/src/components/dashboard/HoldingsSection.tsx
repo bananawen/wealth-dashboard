@@ -23,6 +23,9 @@ import {
   formatByCurrency,
   formatDateMMMDDYY,
   formatShares,
+  formatSignedByCurrency,
+  formatSignedTWD,
+  formatPct,
   formatTWD,
   getHoldingGroup,
   getMarketLabel,
@@ -271,7 +274,7 @@ export default function HoldingsSection({
                   </div>
                   <div className="mt-2 text-xs opacity-70">市值 {formatTWD(group.marketValueTwd)}</div>
                   <div className={`mt-1 text-sm font-semibold ${group.unrealizedGainTwd >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                    損益 {group.unrealizedGainTwd >= 0 ? '+' : ''}{formatTWD(Math.abs(group.unrealizedGainTwd))}
+                    損益 {formatSignedTWD(group.unrealizedGainTwd)}
                   </div>
                 </div>
               ))}
@@ -402,7 +405,7 @@ export default function HoldingsSection({
                         </div>
                       </div>
                       <div className={`shrink-0 text-right text-sm font-semibold ${gain >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                        {gainPct >= 0 ? '+' : ''}{gainPct.toFixed(2)}%
+                        {formatPct(gainPct)}
                       </div>
                     </div>
 
@@ -415,9 +418,9 @@ export default function HoldingsSection({
                       <div className="text-right">
                         <div className="text-xs text-[var(--text-muted)]">損益</div>
                         <div className={`font-semibold ${gain >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          {gain >= 0 ? '+' : '-'}{formatTWD(Math.abs(gainTwd))}
+                          {formatSignedTWD(gainTwd)}
                         </div>
-                        <div className="text-[11px] text-[var(--text-muted)]">{formatByCurrency(Math.abs(gain), currency)}</div>
+                        <div className="text-[11px] text-[var(--text-muted)]">{formatSignedByCurrency(gain, currency)}</div>
                       </div>
                       <div>
                         <div className="text-xs text-[var(--text-muted)]">現價</div>
@@ -523,10 +526,10 @@ export default function HoldingsSection({
                           <div className="text-[10px] opacity-60 sm:text-xs">{formatTWD(marketValueTwd)}</div>
                         </td>
                         <td className={`px-2 py-2 text-right font-semibold sm:px-4 sm:py-3 ${gain >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          <div>{gain >= 0 ? '+' : ''}{formatByCurrency(Math.abs(gain), currency)}</div>
+                          <div>{formatSignedByCurrency(gain, currency)}</div>
                           <div className="text-[10px] opacity-70 sm:text-xs">
-                            {formatTWD(Math.abs(gainTwd))}
-                            <span className="ml-1">({gainPct >= 0 ? '+' : ''}{gainPct.toFixed(2)}%)</span>
+                            {formatSignedTWD(gainTwd)}
+                            <span className="ml-1">({formatPct(gainPct)})</span>
                           </div>
                         </td>
                       </tr>
@@ -556,7 +559,7 @@ export default function HoldingsSection({
               <DashboardStatCard label="現價" value={selectedHolding.price_status === 'missing' ? 'N/A' : formatByCurrency(Number(selectedHolding.current_price ?? 0), selectedHolding.currency ?? 'TWD')} sub={selectedHolding.price_source ? `來源 ${selectedHolding.price_source}` : '來源暫缺'} />
               <DashboardStatCard label="庫存成本(TWD)" value={formatTWD(Number(selectedHolding.total_cost_twd ?? 0))} />
               <DashboardStatCard label="現值(TWD)" value={formatTWD(Number(selectedHolding.market_value_twd ?? 0))} />
-              <DashboardStatCard label="未實現損益(TWD)" value={formatTWD(Number(selectedHolding.unrealized_gain_twd ?? 0))} positive={(selectedHolding.unrealized_gain_twd ?? 0) >= 0} />
+              <DashboardStatCard label="未實現損益(TWD)" value={formatSignedTWD(Number(selectedHolding.unrealized_gain_twd ?? 0))} positive={(selectedHolding.unrealized_gain_twd ?? 0) >= 0} />
             </div>
 
             {selectedPerformanceTimeline.length > 0 ? (
@@ -651,7 +654,7 @@ export default function HoldingsSection({
                           <td className="px-3 py-2 text-right">{formatByCurrency(point.avgCost, selectedHolding.currency ?? 'TWD')}</td>
                           <td className="px-3 py-2 text-right">{formatTWD(point.costBasisTwd)}</td>
                           <td className={`px-3 py-2 text-right font-semibold ${(point.unrealizedGainTwd ?? 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                            {formatTWD(point.unrealizedGainTwd)}
+                            {formatSignedTWD(point.unrealizedGainTwd)}
                           </td>
                         </tr>
                       );

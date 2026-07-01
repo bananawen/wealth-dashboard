@@ -5,7 +5,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import InlineNotice from '../components/InlineNotice';
 import DashboardStatCard from '../components/dashboard/DashboardStatCard';
 import { DataTimestamp, LoadingState } from '../components/UIState';
-import { formatCurrencyBreakdown, formatPct, formatShares, formatTWD } from '../components/dashboard/shared';
+import { formatCurrencyBreakdown, formatPct, formatShares, formatSignedTWD, formatTWD } from '../components/dashboard/shared';
 import { useDashboardState } from '../hooks/useDashboardState';
 import type { DashboardView } from '../types/dashboard';
 
@@ -117,13 +117,13 @@ export default function DashboardPage({ view = 'overview' }: DashboardPageProps)
               />
               <DashboardStatCard
                 label="未實現損益"
-                value={formatTWD(summary.unrealized_gain_twd)}
+                value={formatSignedTWD(summary.unrealized_gain_twd)}
                 sub={`${formatPct(summary.unrealized_pct)} · ${formatCurrencyBreakdown(summary.unrealized_gain_by_currency)}`}
                 positive={(summary.unrealized_gain_twd ?? 0) >= 0}
               />
               <DashboardStatCard
                 label="已實現損益"
-                value={formatTWD(summary.realized_gain_twd ?? summary.realized_gain)}
+                value={formatSignedTWD(summary.realized_gain_twd ?? summary.realized_gain)}
                 sub={formatCurrencyBreakdown(summary.realized_gain_by_currency)}
                 positive={(summary.realized_gain_twd ?? summary.realized_gain) >= 0}
               />

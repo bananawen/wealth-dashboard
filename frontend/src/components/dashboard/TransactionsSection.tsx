@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, Search, Trash2, X } from 'lucide-react';
 import DatePicker from '../DatePicker';
 import { EmptyState, SemanticBadge } from '../UIState';
-import { ASSET_CLASS_LABELS, formatCurrency, formatDateMMMDDYY, formatShares, SECTOR_LABELS, TRANSACTION_CATEGORY_LABELS, TRANSACTION_CATEGORY_OPTIONS } from './shared';
+import { ASSET_CLASS_LABELS, formatCurrency, formatDateMMMDDYY, formatShares, formatSignedTWD, SECTOR_LABELS, TRANSACTION_CATEGORY_LABELS, TRANSACTION_CATEGORY_OPTIONS } from './shared';
 import type { Sector, Transaction, TransactionCategory, UndoEntry } from '../../types';
 
 interface TransactionsSectionProps {
@@ -204,7 +204,7 @@ export default function TransactionsSection({
                   </div>
                   <div className="mt-2 text-xs opacity-70">成交額 {formatMoney(stat.grossAmount)}</div>
                   <div className={`mt-1 text-sm font-semibold ${isGainPositive ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                    已實現損益 {isGainPositive ? '+' : ''}{formatMoney(Math.abs(stat.realizedGain))}
+                    已實現損益 {formatSignedTWD(stat.realizedGain)}
                   </div>
                 </div>
               );
@@ -322,6 +322,11 @@ export default function TransactionsSection({
                 ? `NT$${Number(value).toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 : formatCurrency(value)
             );
+            const formatSignedMoney = (value: number) => (
+              isTwdSymbol
+                ? `${value >= 0 ? '+' : '-'}NT$${Number(Math.abs(value)).toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : `${value >= 0 ? '+' : '-'}${formatCurrency(Math.abs(value))}`
+            );
 
             return (
               <div
@@ -357,7 +362,7 @@ export default function TransactionsSection({
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
                       <span>{`手續費 ${formatMoney(Number(tx.fee ?? 0))}`}</span>
                       <span>{`稅費 ${formatMoney(Number(tx.tax ?? 0))}`}</span>
-                      <span>{`已實現損益 ${formatMoney(Number(tx.realized_gain ?? 0))}`}</span>
+                      <span>{`已實現損益 ${formatSignedMoney(Number(tx.realized_gain ?? 0))}`}</span>
                     </div>
                   </div>
                 ) : null}

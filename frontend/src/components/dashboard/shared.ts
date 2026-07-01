@@ -93,6 +93,11 @@ export function formatTWD(v: number) {
   })}`;
 }
 
+export function formatSignedTWD(v: number) {
+  if (v == null || Number.isNaN(v)) return 'N/A';
+  return `${v >= 0 ? '+' : '-'}${formatTWD(Math.abs(v))}`;
+}
+
 export function formatByCurrency(v: number, currency = 'TWD') {
   if (v == null || Number.isNaN(v)) return 'N/A';
   if (currency === 'USD') {
@@ -111,6 +116,11 @@ export function formatByCurrency(v: number, currency = 'TWD') {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
+}
+
+export function formatSignedByCurrency(v: number, currency = 'TWD') {
+  if (v == null || Number.isNaN(v)) return 'N/A';
+  return `${v >= 0 ? '+' : '-'}${formatByCurrency(Math.abs(v), currency)}`;
 }
 
 export function formatPct(v: number) {
