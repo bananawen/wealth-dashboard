@@ -27,6 +27,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iPhone/iPad responsive layout issues.
 - Theme persistence across sessions.
 
+## 2026-07-03
+
+### Added
+- Added `backend/tests/test_portfolio_xirr_local_prices.py` to lock in XIRR terminal valuation from local price history and estimated-status fallback behavior.
+
+### Changed
+- Changed `backend/app/services/portfolio_service.py` so XIRR now values the terminal portfolio using the latest local `price_history_tw` / `price_history_us` close on or before the calculation date.
+- Changed XIRR status messaging to explicitly describe when the result is based on local historical closes and when any holding has to fall back to average cost due to missing local price history.
+- Changed `frontend/src/types/index.ts` to accept the new `estimated` XIRR status returned by the backend.
+
+### Fixed
+- Fixed XIRR being overstated in offline or quote-failure conditions where the summary valuation could silently fall back to average cost instead of using local historical prices first.
+- Fixed the overview XIRR card lacking source-context for its terminal valuation, which made negative or positive results hard to trust.
+
+### Risk And Rollback
+- Roll back by restoring the previous XIRR terminal-valuation path in `backend/app/services/portfolio_service.py`; this change is isolated to annualized-return calculation and messaging.
+
+### Next
+- Consider exposing the exact XIRR valuation date range directly in the overview UI if you want users to distinguish immediately between latest local close and true live price.
+
+## Change Log
+
+日期：2026-07-03
+
+修改內容：
+- 新增：
+  - 無
+- 修改：
+  - 修改 `backend/scripts/asset_class_backfill.py`，改成逐筆依 `symbol + category` 重新判斷 `asset_class`，不再沿用資料庫既有值。
+  - 修改 `backend/scripts/sector_backfill.py`，改成逐筆依 `symbol + category` 重新判斷 `sector`，不再沿用資料庫既有值。
+  - 修改 `backend/tests/test_asset_class_backfill.py` 與 `backend/tests/test_sector_backfill.py`，鎖定「系統分類優先於舊資料」的行為。
+  - 新增 `backend/scripts/classification_preview.py`，提供分類規則調整前的差異預覽工具。
+  - 新增 `TRANSACTION_CLASSIFICATION_RULES.md`，整理目前 `asset_class / sector` 判斷規則與維護流程。
+  - 修改 `backend/scripts/README.md`，補充分類預覽工具與最新分類維護流程。
+  - 修改 `frontend/src/components/AddTransactionForm.tsx` 與 `frontend/src/components/dashboard/TransactionsSection.tsx`，將 `sector` 顯示語意明確化為「產業 / 策略標籤」。
+  - 修改 `frontend/src/components/dashboard/shared.ts`、`frontend/src/components/AddTransactionForm.tsx`、`frontend/src/components/dashboard/TransactionsSection.tsx` 與 `README.md`，將前端與文件中的對外文案統一為「分類標籤」。
+  - 修改 `frontend/src/components/dashboard/TransactionsSection.tsx`，新增交易績效 KPI、長期投資參考統計，以及依交易分類 / 資產類別 / 產業標籤 / 市場切換的損益拆解。
+- 刪除：
+  - 無
+
+修改原因：
+
+- 使用者希望商品分類完全由系統主動判斷，舊的 backfill 腳本若偏好沿用既有欄位值，會讓資料庫長期保留人工輸入或歷史錯誤分類，無法收斂成一致結果。
+
+影響範圍：
+
+- `transactions.asset_class`
+- `transactions.sector`
+- 一次性回填腳本預覽與實際寫入結果
+- 分類規則文件與預覽工具
+- 前端交易分類文案
+- 前端與 README 的命名一致性
+
+下一步：
+
+- 後續若調整分類規則，先跑 `classification_preview.py`，再決定是否執行回填。
+
 ## Change Log
 
 日期：2026-07-01
@@ -150,6 +207,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changed `backend/app/main.py` to register the `/prices` router so frontend holding-detail charts can actually fetch local historical price series.
 - Changed `frontend/src/components/StatusBar.tsx`, `frontend/src/components/DashboardLayout.tsx`, and `frontend/src/hooks/useDashboardState.ts` so shared dashboard chrome only calls `/api/admin/*` endpoints for admin users.
 - Changed `frontend/src/components/dashboard/HoldingsSection.tsx` to fetch per-symbol local price history and draw the holding chart from daily historical closes through the current date instead of only plotting transaction dates.
+- Changed `frontend/src/components/dashboard/HoldingsSection.tsx` so the holding chart can switch between `未實現報酬率` and `TWR`, reducing the distortion from position-size changes when evaluating holding performance.
+- Changed the holding-detail transaction table in `frontend/src/components/dashboard/HoldingsSection.tsx` to display the original transaction fields directly, with an added post-trade position column, so it stays aligned with the main transactions page.
 - Changed `frontend/vite.config.js` to normalize `dist` permissions as part of the Vite build pipeline itself, reducing the chance of another nginx static-file `403` after direct builds.
 
 ### Fixed
@@ -159,6 +218,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed nginx `403 Forbidden` on `/` after a direct local build left `frontend/dist` unreadable to the web server; restored web-readable `755/644` permissions on deployed static files.
 - Fixed the holdings detail chart so symbols with local price history now show a daily value curve instead of staying pinned to purchase dates only.
 - Fixed the holdings detail chart state messaging by explicitly labeling when the UI has to fall back to transaction points because local price history is missing.
+- Fixed the holding-detail transaction table drifting from the transactions page by removing derived average-cost / unrealized-gain cells from that table and showing the actual transaction-side values instead.
 
 ### Risk And Rollback
 - Roll back by removing the fallback-history path in `backend/app/services/portfolio_service.py` and restarting the backend; existing snapshot-backed accounts are otherwise unaffected.

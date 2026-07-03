@@ -48,6 +48,89 @@ class PortfolioService:
     }
 
     @staticmethod
+    def _format_xirr_price_message(
+        price_dates: list[date],
+        missing_symbols: list[str],
+        as_of_date: date,
+    ) -> tuple[str, str | None]:
+        if not price_dates and missing_symbols:
+            return "estimated", f"XIRR 缺少本地歷史價格，{len(missing_symbols)} 檔暫以成本價估算"
+        if not price_dates:
+            return "ok", "目前無持倉，XIRR 不含期末持倉估值"
+
+        min_price_date = min(price_dates)
+        max_price_date = max(price_dates)
+        if min_price_date == max_price_date:
+            base_message = f"依本地歷史收盤價計算（價格日：{max_price_date.isoformat()}）"
+        else:
+            base_message = (
+                "依本地歷史收盤價計算"
+                f"（價格日介於 {min_price_date.isoformat()} 至 {max_price_date.isoformat()}）"
+            )
+
+        if missing_symbols:
+            return (
+                "estimated",
+                f"{base_message}；{len(missing_symbols)} 檔缺本地價格，改以成本價估算",
+            )
+
+        if max_price_date < as_of_date:
+            return "ok", f"{base_message}（非即時報價）"
+        return "ok", base_message
+
+    @classmethod
+    def _get_xirr_terminal_value_twd(
+        cls,
+        user_id: int,
+        as_of_date: date,
+        rates: dict[str, float],
+    ) -> tuple[float, str, str | None]:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT symbol, shares, avg_cost, currency "
+                "FROM holdings WHERE shares > 0 AND user_id = %s ORDER BY symbol",
+                (user_id,),
+            )
+            holdings = [dict(row) for row in cur.fetchall()]
+
+            total_value_twd = 0.0
+            price_dates: list[date] = []
+            missing_symbols: list[str] = []
+
+            for row in holdings:
+                symbol = MarketService.normalize_symbol(str(row["symbol"]))
+                shares = float(row["shares"] or 0.0)
+                avg_cost = float(row["avg_cost"] or 0.0)
+                currency = FxService.normalize_currency(row.get("currency"))
+                profile = MarketService.get_symbol_profile(conn, symbol)
+
+                cur.execute(
+                    f"""
+                    SELECT price_date, close
+                    FROM {profile.history_table}
+                    WHERE symbol = %s AND price_date <= %s
+                    ORDER BY price_date DESC
+                    LIMIT 1
+                    """,
+                    (symbol, as_of_date),
+                )
+                latest_row = cur.fetchone()
+
+                if latest_row and float(latest_row["close"] or 0.0) > 0:
+                    price = float(latest_row["close"])
+                    price_dates.append(date.fromisoformat(str(latest_row["price_date"])[:10]))
+                else:
+                    price = avg_cost
+                    missing_symbols.append(symbol)
+
+                fx_rate = FxService.get_rate_to_twd_from_rates(rates, currency)
+                total_value_twd += shares * price * fx_rate
+
+        status, message = cls._format_xirr_price_message(price_dates, missing_symbols, as_of_date)
+        return total_value_twd, status, message
+
+    @staticmethod
     def _get_realized_gain_twd(user_id: int, rates: dict[str, float]) -> float:
         with get_db() as conn:
             cur = conn.cursor()
@@ -100,10 +183,10 @@ class PortfolioService:
             {k: round(v, 2) for k, v in unrealized_gain_by_currency.items()},
         )
 
-    @staticmethod
+    @classmethod
     def _get_annualized_return(
+        cls,
         user_id: int,
-        total_value_twd: float,
         rates: dict[str, float],
     ) -> tuple[float | None, str, str | None]:
         with get_db() as conn:
@@ -128,8 +211,13 @@ class PortfolioService:
             cf_twd = float(d["cf"] or 0.0) * FxService.get_rate_to_twd_from_rates(rates, d.get("currency"))
             all_cash_flows.append(cf_twd)
 
+        terminal_value_twd, terminal_status, terminal_message = cls._get_xirr_terminal_value_twd(
+            user_id,
+            as_of_date=date.today(),
+            rates=rates,
+        )
         all_dates.append(date.today())
-        all_cash_flows.append(total_value_twd)
+        all_cash_flows.append(terminal_value_twd)
         if len(all_cash_flows) < 2:
             return None, "insufficient_data", "交易筆數不足，無法計算 XIRR"
 
@@ -137,7 +225,7 @@ class PortfolioService:
         if result is None or not isfinite(result):
             return None, "failed", "XIRR 計算失敗，請確認現金流方向與資料完整性"
 
-        return result * 100, "ok", None
+        return result * 100, terminal_status, terminal_message
 
     @staticmethod
     def _get_history_rows(user_id: int, start_date: date | None = None) -> list[dict]:
@@ -344,7 +432,7 @@ class PortfolioService:
         previous_value_twd = total_value_twd - day_change_twd
         day_change_pct = (day_change_twd / previous_value_twd * 100) if previous_value_twd > 0 else 0.0
         realized_gain_twd = cls._get_realized_gain_twd(user_id, rates)
-        annualized, annualized_status, annualized_message = cls._get_annualized_return(user_id, total_value_twd, rates)
+        annualized, annualized_status, annualized_message = cls._get_annualized_return(user_id, rates)
         now = datetime.now(timezone.utc).isoformat()
 
         return PortfolioSummary(

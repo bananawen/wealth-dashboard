@@ -146,7 +146,7 @@ export interface PortfolioSummary {
   realized_gain_by_currency?: Record<string, number>;
   realized_pct: number;
   annualized_return: number | null;
-  annualized_return_status?: 'ok' | 'insufficient_data' | 'failed';
+  annualized_return_status?: 'ok' | 'estimated' | 'insufficient_data' | 'failed';
   annualized_return_message?: string | null;
   fx_rate?: number;
   last_updated?: string;
